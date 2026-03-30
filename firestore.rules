@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidLeaderboardEntry(data) {
+      return data.keys().hasAll(['userId', 'name', 'score', 'timestamp']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
+             data.score is int && data.score >= 0 &&
+             data.timestamp is string; // Using string for simplicity as per blueprint
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /leaderboard/{entryId} {
+      allow read: if true; // Publicly readable for the login screen
+      allow create: if isAuthenticated() && isValidLeaderboardEntry(request.resource.data);
+      allow update, delete: if false; // Leaderboard entries are immutable for now
+    }
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}

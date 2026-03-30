@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "LeaderboardEntry": {
+      "title": "Leaderboard Entry",
+      "description": "A single entry in the global leaderboard.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The unique ID of the user." },
+        "name": { "type": "string", "description": "The display name of the user." },
+        "score": { "type": "integer", "description": "The total score achieved." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the score was achieved." }
+      },
+      "required": ["userId", "name", "score", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/leaderboard/{entryId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Global leaderboard entries."
+    }
+  }
+}
