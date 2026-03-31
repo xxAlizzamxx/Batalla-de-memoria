@@ -150,83 +150,98 @@ const startBackgroundAmbience = (skin: string = "default") => {
       while (nextTick < audioCtx.currentTime + 0.1) {
         // Musical generator per skin
         if (skin === "retro") {
-           // Simple Chiptune Arp
-           if (Math.random() > 0.7) {
+           // Faster Chiptune Arp
+           if (Math.random() > 0.3) {
               const osc = audioCtx.createOscillator();
               const g = audioCtx.createGain();
               osc.type = "square";
-              const notes = [440, 523, 659, 880];
+              const notes = [440, 523, 659, 880, 1046, 1318];
               osc.frequency.setValueAtTime(notes[Math.floor(Math.random()*notes.length)], nextTick);
-              g.gain.setValueAtTime(0.02, nextTick);
-              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.15);
+              g.gain.setValueAtTime(0.04, nextTick);
+              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.1);
               osc.connect(g).connect(masterGain);
-              osc.start(nextTick); osc.stop(nextTick + 0.15);
+              osc.start(nextTick); osc.stop(nextTick + 0.1);
            }
         } else if (skin === "cyberpunk") {
-           // Dark Bass Pulses
-           if (Math.random() > 0.9) {
+           // Dark Bass Pulses + Synthetic HiHats
+           if (Math.random() > 0.4) {
               const osc = audioCtx.createOscillator();
               const g = audioCtx.createGain();
               osc.type = "sawtooth";
-              osc.frequency.setValueAtTime(60 + Math.random() * 20, nextTick);
-              g.gain.setValueAtTime(0.05, nextTick);
-              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.8);
+              osc.frequency.setValueAtTime(40 + Math.random() * 40, nextTick);
+              g.gain.setValueAtTime(0.06, nextTick);
+              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.4);
               osc.connect(g).connect(masterGain);
-              osc.start(nextTick); osc.stop(nextTick + 0.8);
+              osc.start(nextTick); osc.stop(nextTick + 0.4);
            }
-        } else if (skin === "deepsea") {
-           // Bubbles & Low Sine
-           if (Math.random() > 0.95) {
-              const osc = audioCtx.createOscillator();
-              const g = audioCtx.createGain();
-              osc.type = "sine";
-              osc.frequency.setValueAtTime(800 + Math.random() * 1000, nextTick);
-              g.gain.setValueAtTime(0.01, nextTick);
-              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.05);
-              osc.connect(g).connect(masterGain);
-              osc.start(nextTick); osc.stop(nextTick + 0.05);
-           }
-        } else if (skin === "inferno") {
-           // Fire Crackle (Noise)
-           if (Math.random() > 0.8) {
-              const bufferSize = audioCtx.sampleRate * 0.1;
+           if (Math.random() > 0.6) { // Hi-Hats
+              const bufferSize = audioCtx.sampleRate * 0.05;
               const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
               const data = buffer.getChannelData(0);
               for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
               const node = audioCtx.createBufferSource();
               node.buffer = buffer;
+              const filter = audioCtx.createBiquadFilter();
+              filter.type = "highpass";
+              filter.frequency.value = 5000;
               const g = audioCtx.createGain();
-              g.gain.setValueAtTime(0.01, nextTick);
-              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.1);
-              node.connect(g).connect(masterGain);
+              g.gain.setValueAtTime(0.02, nextTick);
+              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.05);
+              node.connect(filter).connect(g).connect(masterGain);
               node.start(nextTick);
            }
-        } else if (skin === "matrix") {
-           // Digital Bleeps
-           if (Math.random() > 0.85) {
+        } else if (skin === "deepsea") {
+           // Bubbles & Dynamic Sine
+           if (Math.random() > 0.7) {
               const osc = audioCtx.createOscillator();
               const g = audioCtx.createGain();
               osc.type = "sine";
-              osc.frequency.setValueAtTime(2000 + Math.random() * 4000, nextTick);
+              osc.frequency.setValueAtTime(400 + Math.random() * 1500, nextTick);
               g.gain.setValueAtTime(0.02, nextTick);
-              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.02);
+              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.1);
               osc.connect(g).connect(masterGain);
-              osc.start(nextTick); osc.stop(nextTick + 0.02);
+              osc.start(nextTick); osc.stop(nextTick + 0.1);
+           }
+        } else if (skin === "inferno") {
+           // Destructive fast arps
+           if (Math.random() > 0.5) {
+              const osc = audioCtx.createOscillator();
+              const g = audioCtx.createGain();
+              osc.type = "sawtooth";
+              const notes = [150, 180, 210, 300, 330];
+              osc.frequency.setValueAtTime(notes[Math.floor(Math.random()*notes.length)], nextTick);
+              g.gain.setValueAtTime(0.03, nextTick);
+              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.1);
+              osc.connect(g).connect(masterGain);
+              osc.start(nextTick); osc.stop(nextTick + 0.1);
+           }
+        } else if (skin === "matrix") {
+           // Fast Digital Bleeps
+           if (Math.random() > 0.3) {
+              const osc = audioCtx.createOscillator();
+              const g = audioCtx.createGain();
+              osc.type = "square";
+              osc.frequency.setValueAtTime(1000 + Math.random() * 5000, nextTick);
+              g.gain.setValueAtTime(0.03, nextTick);
+              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.05);
+              osc.connect(g).connect(masterGain);
+              osc.start(nextTick); osc.stop(nextTick + 0.05);
            }
         } else {
-           // Cosmos (Default Floating Pad)
-           if (Math.random() > 0.98) {
+           // Cosmos (Dynamic Space Pulses)
+           if (Math.random() > 0.6) {
               const osc = audioCtx.createOscillator();
               const g = audioCtx.createGain();
               osc.type = "sine";
-              osc.frequency.setValueAtTime(100 + Math.random() * 300, nextTick);
+              const notes = [220, 277.18, 329.63, 440]; // A major pentatonic
+              osc.frequency.setValueAtTime(notes[Math.floor(Math.random()*notes.length)], nextTick);
               g.gain.setValueAtTime(0.03, nextTick);
-              g.gain.linearRampToValueAtTime(0, nextTick + 4);
+              g.gain.exponentialRampToValueAtTime(0.001, nextTick + 0.5);
               osc.connect(g).connect(masterGain);
-              osc.start(nextTick); osc.stop(nextTick + 4);
+              osc.start(nextTick); osc.stop(nextTick + 0.5);
            }
         }
-        nextTick += 0.15;
+        nextTick += 0.1; // Faster tick rate
       }
       requestAnimationFrame(scheduler);
     };
@@ -244,7 +259,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [spectatingId, setSpectatingId] = useState<string | null>(null);
-  const [roomId, setRoomId] = useState<string>("");
+  const [roomId, setRoomId] = useState<string>(() => new URLSearchParams(window.location.search).get("room") || "");
   const [joiningRoom, setJoiningRoom] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -559,18 +574,43 @@ export default function App() {
       <div className="atmosphere" />
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-8 relative z-20">
+      <div className="glass-card bg-black/40 border border-white/10 rounded-2xl p-4 mb-8 flex flex-col md:flex-row gap-4 items-center justify-between relative z-20 shadow-lg">
         <div className="flex items-center gap-3">
-           <div className="p-2 bg-purple-500 rounded-lg"><Brain className="w-6 h-6" /></div>
-           <h1 className="text-2xl font-serif font-bold">Memory Battle</h1>
+           <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg shadow-lg">
+              <Brain className="w-6 h-6 text-white" />
+           </div>
+           <h1 className="text-2xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Memory Battle</h1>
         </div>
-        <div className="flex items-center gap-4">
-           <div className="flex items-center gap-2 glass-card bg-white/5 px-4 py-2">
-              <span className="text-[10px] font-bold uppercase text-white/30 truncate max-w-16">Sala {roomId}</span>
-              <div className="flex gap-1">
-                 <button onClick={() => resetRoomTransaction(roomId)} title="Reiniciar Sala" className="p-1 hover:bg-white/10 rounded transition-colors"><RefreshCw className="w-4 h-4 text-white/40" /></button>
-                 <button onClick={() => setChatOpen(!chatOpen)} className="p-1 hover:bg-white/10 rounded transition-colors"><Share2 className="w-4 h-4 text-white/40" /></button>
-              </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-3">
+           <div className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-1.5 border border-white/10 shadow-inner">
+              <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Sala</span>
+              <span className="text-sm font-bold text-white tracking-widest">{roomId}</span>
+           </div>
+
+           {gameState?.status === "PLAYING" && (
+             <div className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-1.5 border border-white/10 shadow-inner">
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Ronda</span>
+                <span className="text-sm font-bold text-purple-400">{gameState.currentRound} / {gameState.totalRounds}</span>
+             </div>
+           )}
+
+           <button 
+             onClick={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('room', roomId);
+                navigator.clipboard.writeText(url.toString());
+                addNotification("¡Enlace de sala copiado!", "success");
+             }}
+             className="flex items-center gap-2 bg-purple-500/20 hover:bg-purple-500/40 border border-purple-500/50 text-purple-300 px-3 py-1.5 rounded-lg transition-all active:scale-95 text-xs font-bold uppercase tracking-wide group"
+           >
+             <UserPlus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+             Invitar Amigos
+           </button>
+           
+           <div className="flex gap-1 border-l border-white/10 pl-3">
+              <button onClick={() => resetRoomTransaction(roomId)} title="Reiniciar Sala" className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><RefreshCw className="w-4 h-4 text-white/40 hover:text-white" /></button>
+              <button onClick={() => setChatOpen(!chatOpen)} title="Chat" className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><Share2 className="w-4 h-4 text-white/40 hover:text-white" /></button>
            </div>
         </div>
       </div>
@@ -630,28 +670,70 @@ export default function App() {
                   <div className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-400/50 mb-2">Preparar Partida</div>
                   <div className="glass-card bg-white/5 p-4 space-y-4">
                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-white/30">Modo de Juego</label>
-                        <select value={selectedMode} onChange={(e) => setSelectedMode(e.target.value as GameMode)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm focus:ring-2 ring-purple-500/50 outline-none transition-all">
-                           <option value="FFA">Todos vs Todos</option>
-                           <option value="1V1">1 vs 1</option>
-                           <option value="TEAMS">Por Equipos</option>
-                        </select>
-                        <button 
-                         onClick={startGame} 
-                         className={cn(
-                           "w-full font-black py-4 rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all text-sm tracking-widest uppercase mt-4",
-                           myPlayer?.skin === "retro" ? "bg-white text-black border-4 border-black" :
-                           myPlayer?.skin === "cyberpunk" ? "bg-cyan-500 text-black shadow-[0_0_20px_rgba(0,255,255,0.5)]" :
-                           myPlayer?.skin === "deepsea" ? "bg-blue-600 text-white" :
-                           myPlayer?.skin === "inferno" ? "bg-orange-600 text-black" :
-                           myPlayer?.skin === "matrix" ? "bg-green-600 text-black" :
-                           "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                         )}
-                      >
-                        Iniciar Batalla
-                      </button>
-                      {!isAdmin && <div className="text-[9px] text-center opacity-30 italic mt-2">Cualquier jugador puede iniciar la partida</div>}
-                     </div>
+                        <label className="text-[10px] uppercase font-bold text-white/30 mb-2 block">Modo de Juego</label>
+                        <div className="grid grid-cols-1 gap-2">
+                           <button 
+                              disabled={!isAdmin} 
+                              onClick={() => setSelectedMode("FFA")} 
+                              className={cn("w-full flex items-center justify-between p-3 rounded-xl border transition-all duration-300 text-sm font-bold group", !isAdmin && "opacity-50 cursor-not-allowed", isAdmin && "hover:-translate-y-1 hover:shadow-lg", selectedMode === "FFA" ? "bg-purple-500/20 border-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]" : "bg-black/40 border-white/10 text-white/50 hover:bg-white/10")}
+                           >
+                              <span className="group-hover:text-purple-300 transition-colors">Todos vs Todos</span>
+                              <Swords className={cn("w-5 h-5 transition-transform duration-300", selectedMode === "FFA" ? "text-purple-400 scale-110" : "text-white/20 group-hover:text-purple-400/50")} />
+                           </button>
+
+                           <button 
+                              disabled={!isAdmin} 
+                              onClick={() => setSelectedMode("1V1")} 
+                              className={cn("w-full flex items-center justify-between p-3 rounded-xl border transition-all duration-300 text-sm font-bold group", !isAdmin && "opacity-50 cursor-not-allowed", isAdmin && "hover:-translate-y-1 hover:shadow-lg", selectedMode === "1V1" ? "bg-blue-500/20 border-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.3)]" : "bg-black/40 border-white/10 text-white/50 hover:bg-white/10")}
+                           >
+                              <span className="group-hover:text-blue-300 transition-colors">1 vs 1</span>
+                              <div className={cn("flex items-center gap-1.5 transition-all duration-300", selectedMode === "1V1" ? "scale-110" : "opacity-50 grayscale group-hover:grayscale-0 group-hover:opacity-100")}>
+                                 <UserIcon className="w-4 h-4 text-blue-400" />
+                                 <span className="text-[9px] font-black italic text-white/40">VS</span>
+                                 <UserIcon className="w-4 h-4 text-pink-400" />
+                              </div>
+                           </button>
+
+                           <button 
+                              disabled={!isAdmin} 
+                              onClick={() => setSelectedMode("TEAMS")} 
+                              className={cn("w-full flex items-center justify-between p-3 rounded-xl border transition-all duration-300 text-sm font-bold group", !isAdmin && "opacity-50 cursor-not-allowed", isAdmin && "hover:-translate-y-1 hover:shadow-lg", selectedMode === "TEAMS" ? "bg-green-500/20 border-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.3)]" : "bg-black/40 border-white/10 text-white/50 hover:bg-white/10")}
+                           >
+                              <span className="group-hover:text-green-300 transition-colors">Por Equipos</span>
+                              <div className={cn("flex items-center gap-1.5 transition-all duration-300", selectedMode === "TEAMS" ? "scale-110" : "opacity-50 grayscale group-hover:grayscale-0 group-hover:opacity-100")}>
+                                 <div className="flex -space-x-1.5">
+                                    <UserIcon className="w-4 h-4 text-green-400" />
+                                    <UserIcon className="w-4 h-4 text-green-400" />
+                                 </div>
+                                 <span className="text-[9px] font-black italic text-white/40">VS</span>
+                                 <div className="flex -space-x-1.5">
+                                    <UserIcon className="w-4 h-4 text-orange-400" />
+                                    <UserIcon className="w-4 h-4 text-orange-400" />
+                                 </div>
+                              </div>
+                           </button>
+                        </div>
+                        {isAdmin ? (
+                          <button 
+                             onClick={startGame} 
+                             className={cn(
+                               "w-full font-black py-4 rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all text-sm tracking-widest uppercase mt-4",
+                               myPlayer?.skin === "retro" ? "bg-white text-black border-4 border-black" :
+                               myPlayer?.skin === "cyberpunk" ? "bg-cyan-500 text-black shadow-[0_0_20px_rgba(0,255,255,0.5)]" :
+                               myPlayer?.skin === "deepsea" ? "bg-blue-600 text-white" :
+                               myPlayer?.skin === "inferno" ? "bg-orange-600 text-black" :
+                               myPlayer?.skin === "matrix" ? "bg-green-600 text-black" :
+                               "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                             )}
+                          >
+                            Iniciar Batalla
+                          </button>
+                        ) : (
+                          <div className="w-full font-black py-4 rounded-xl border border-white/20 bg-white/5 text-white/50 text-center text-sm tracking-widest uppercase mt-4 animate-pulse">
+                            Esperando al creador...
+                          </div>
+                        )}
+                      </div>
                   </div>
                </div>
             )}
