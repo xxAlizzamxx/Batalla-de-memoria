@@ -114,6 +114,7 @@ function startRound(roomId: string, round: number) {
       if (!gsp.eliminated) {
         p.board = generateBoard(round, room.gameState.theme);
         gsp.board = p.board;
+        gsp.skills.peek = (gsp.skills.peek || 0) + 1;
       } else {
         p.board = [];
         gsp.board = [];
@@ -341,7 +342,7 @@ async function startServer() {
                 gsp.combo += 1;
                 gsp.score += (10 + gsp.combo * 5);
                 
-                if (Math.random() < 0.3) {
+                if (Math.random() < 0.3 || gsp.combo >= 3) {
                   const abilities = ["peek", "freeze", "shield", "shuffle"];
                   const granted = abilities[Math.floor(Math.random() * abilities.length)];
                   gsp.skills[granted] = (gsp.skills[granted] || 0) + 1;
