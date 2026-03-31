@@ -1,0 +1,5 @@
+src/App.tsx(10,10): error TS2440: Import declaration conflicts with local declaration of 'Player'.
+src/App.tsx(10,18): error TS2440: Import declaration conflicts with local declaration of 'Card'.
+src/App.tsx(10,24): error TS2440: Import declaration conflicts with local declaration of 'GameMode'.
+src/App.tsx(10,34): error TS2440: Import declaration conflicts with local declaration of 'Team'.
+src/App.tsx(10,40): error TS2440: Import declaration conflicts with local declaration of 'GameState'.
