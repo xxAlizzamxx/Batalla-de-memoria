@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Brain, Users, Trophy, Timer, Play, UserPlus, LogOut, Shield, Zap, ArrowRight, Skull, LogIn, Eye, RefreshCw, Sparkles, Share2 } from "lucide-react";
+import { Brain, Users, Trophy, Timer, Play, UserPlus, LogOut, Shield, Zap, ArrowRight, Skull, LogIn, Eye, RefreshCw, Sparkles, Share2, Flame, Snowflake, Shuffle } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import Confetti from "react-confetti";
@@ -20,6 +20,16 @@ interface Player {
   timeSpent: number;
   eliminated: boolean;
   board: Card[];
+  combo: number;
+  skills: Record<string, number>;
+  frozenUntil: number;
+  shieldedUntil: number;
+}
+
+interface Notification {
+  id: number;
+  message: string;
+  type: "success" | "warning" | "info" | "error";
 }
 
 interface Card {
@@ -211,6 +221,22 @@ export default function App() {
   const [spectatingId, setSpectatingId] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string>("");
   const [joiningRoom, setJoiningRoom] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [peekActive, setPeekActive] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const int = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(int);
+  }, []);
+
+  const addNotification = (message: string, type: "success" | "warning" | "info" | "error" = "info") => {
+    const id = Date.now() + Math.random();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 3000);
+  };
 
   useEffect(() => {
     // Check for room ID in URL
@@ -290,10 +316,28 @@ export default function App() {
         }
       } else if (message.type === "MATCH_FOUND") {
         playMatchSound();
+        if (message.combo && message.combo > 1) {
+          addNotification(`¡Combo x${message.combo}!`, "success");
+        }
       } else if (message.type === "MISMATCH") {
         playMismatchSound();
       } else if (message.type === "GAME_OVER") {
         playVictorySound();
+      } else if (message.type === "SKILL_GAINED") {
+        addNotification(`Obtuviste la habilidad: ${message.skill}`, "success");
+      } else if (message.type === "SKILL_ACTIVATED") {
+        if (message.skill === "peek") {
+          setPeekActive(true);
+          setTimeout(() => setPeekActive(false), 1500);
+        } else if (message.skill === "freeze" && message.target) {
+          addNotification(`Congelaste a ${message.target}`, "info");
+        } else if (message.skill === "shuffle" && message.target) {
+          addNotification(`Mezclaste a ${message.target}`, "warning");
+        }
+      } else if (message.type === "FROZEN_BY") {
+        addNotification(`¡${message.by} te ha congelado!`, "error");
+      } else if (message.type === "SHUFFLED_BY") {
+        addNotification(`¡${message.by} mezcló tus cartas!`, "warning");
       }
     };
 
@@ -495,6 +539,33 @@ export default function App() {
     <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 relative overflow-hidden">
       <div className="atmosphere" />
       
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+        <AnimatePresence>
+          {notifications.map(n => (
+            <motion.div
+              key={n.id}
+              initial={{ opacity: 0, x: 50, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 50, scale: 0.9 }}
+              className={cn(
+                "px-6 py-3 rounded-xl backdrop-blur-md border shadow-2xl text-sm font-bold flex items-center gap-3",
+                n.type === "success" ? "bg-green-500/20 border-green-500/50 text-green-200" :
+                n.type === "warning" ? "bg-yellow-500/20 border-yellow-500/50 text-yellow-200" :
+                n.type === "error" ? "bg-blue-500/20 border-blue-500/50 text-blue-200" :
+                "bg-purple-500/20 border-purple-500/50 text-purple-200"
+              )}
+            >
+              {n.type === "success" && <Sparkles className="w-5 h-5 text-green-400" />}
+              {n.type === "error" && <Snowflake className="w-5 h-5 text-blue-400" />}
+              {n.type === "warning" && <Shuffle className="w-5 h-5 text-yellow-400" />}
+              {n.type === "info" && <Brain className="w-5 h-5 text-purple-400" />}
+              {n.message}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {gameState?.status === "TOURNAMENT_END" && <Confetti width={windowSize.width} height={windowSize.height} colors={["#a855f7", "#ec4899", "#3b82f6"]} />}
       
       <div className="max-w-7xl mx-auto space-y-8 relative z-10">
@@ -594,25 +665,67 @@ export default function App() {
           {/* Main Game Area */}
           <div className="lg:col-span-3 space-y-6">
             {/* Header Stats */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="glass-card p-6 border-white/5 flex flex-col items-center">
+            <div className="grid grid-cols-4 gap-4">
+              <div className="glass-card p-4 md:p-6 border-white/5 flex flex-col items-center">
                 <Timer className="w-5 h-5 mb-2 text-purple-400" />
-                <span className="text-3xl font-bold">{gameState?.time || 0}s</span>
+                <span className="text-xl md:text-3xl font-bold">{gameState?.time || 0}s</span>
                 <span className="text-[10px] uppercase tracking-widest text-white/30 font-bold">Tiempo</span>
               </div>
-              <div className="glass-card p-6 border-white/5 flex flex-col items-center">
+              <div className="glass-card p-4 md:p-6 border-white/5 flex flex-col items-center">
                 <Sparkles className="w-5 h-5 mb-2 text-pink-400" />
-                <span className="text-3xl font-bold">{myMatchedPairs}</span>
+                <span className="text-xl md:text-3xl font-bold">{myMatchedPairs}</span>
                 <span className="text-[10px] uppercase tracking-widest text-white/30 font-bold">Parejas</span>
               </div>
-              <div className="glass-card p-6 border-white/5 flex flex-col items-center">
-                <Shield className="w-5 h-5 mb-2 text-blue-400" />
-                <span className="text-sm font-bold uppercase tracking-tight">
+              <div className="glass-card p-4 md:p-6 border-white/5 flex flex-col items-center relative overflow-hidden group">
+                {myPlayer && myPlayer.combo > 1 && (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0 }} 
+                    animate={{ opacity: 1, scale: 1 }} 
+                    className="absolute inset-0 bg-gradient-to-t from-orange-500/20 to-transparent pointer-events-none" 
+                  />
+                )}
+                <Flame className={cn("w-5 h-5 mb-2 transition-all", myPlayer && myPlayer.combo > 1 ? "text-orange-500 animate-bounce shadow-orange-500/50" : "text-white/30")} />
+                <span className={cn("text-xl md:text-3xl font-bold transition-colors", myPlayer && myPlayer.combo > 1 ? "text-orange-400" : "")}>{myPlayer?.combo || 0}</span>
+                <span className="text-[10px] uppercase tracking-widest text-white/30 font-bold">Combo</span>
+              </div>
+              <div className="glass-card p-4 md:p-6 border-white/5 flex flex-col items-center justify-center text-center">
+                <Shield className="w-5 h-5 mb-2 text-blue-400 hidden md:block" />
+                <span className="text-xs md:text-sm font-bold uppercase tracking-tight">
                   {myPlayer?.eliminated ? "Eliminado" : (myBoard.every(c => c.matched) && myBoard.length > 0 ? "Completado" : "En Juego")}
                 </span>
-                <span className="text-[10px] uppercase tracking-widest text-white/30 font-bold">Estado</span>
+                <span className="text-[10px] uppercase tracking-widest text-white/30 font-bold hidden md:block">Estado</span>
               </div>
             </div>
+
+            {/* Skills Bar */}
+            {gameState?.status === "PLAYING" && !myPlayer?.eliminated && (
+               <div className="flex justify-center gap-2 md:gap-4">
+                 {[
+                   { id: "peek", icon: Eye, label: "Revelar", color: "text-purple-400", bg: "bg-purple-500/20", border: "border-purple-500/50" },
+                   { id: "freeze", icon: Snowflake, label: "Congelar", color: "text-blue-400", bg: "bg-blue-500/20", border: "border-blue-500/50" },
+                   { id: "shield", icon: Shield, label: "Escudo", color: "text-green-400", bg: "bg-green-500/20", border: "border-green-500/50" },
+                   { id: "shuffle", icon: Shuffle, label: "Mezclar", color: "text-yellow-400", bg: "bg-yellow-500/20", border: "border-yellow-500/50" }
+                 ].map(skill => {
+                   const count = myPlayer?.skills?.[skill.id] || 0;
+                   const Icon = skill.icon;
+                   return (
+                     <button
+                       key={skill.id}
+                       onClick={() => count > 0 && socket?.send(JSON.stringify({ type: "USE_SKILL", skill: skill.id }))}
+                       disabled={count <= 0}
+                       className={cn(
+                         "relative p-3 md:p-4 rounded-2xl flex flex-col items-center gap-1 md:gap-2 transition-all border",
+                         count > 0 ? `glass-card hover:scale-105 hover:shadow-lg ${skill.bg} ${skill.border}` : "opacity-40 grayscale bg-white/5 border-white/10"
+                       )}
+                     >
+                       {count > 0 && <div className="absolute -top-2 -right-2 w-5 h-5 md:w-6 md:h-6 rounded-full bg-white text-black text-[10px] md:text-xs font-bold flex items-center justify-center shadow-lg">{count}</div>}
+                       <Icon className={cn("w-5 h-5 md:w-6 md:h-6", skill.color)} />
+                       <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest">{skill.label}</span>
+                     </button>
+                   );
+                 })}
+               </div>
+            )}
 
             {/* Game Board */}
             <div className="relative glass-card p-4 md:p-8 border-white/5 min-h-[400px] flex items-center justify-center overflow-hidden">
@@ -722,7 +835,11 @@ export default function App() {
               )}
 
               {gameState?.status === "PLAYING" && (
-                <div className="w-full flex flex-col items-center gap-8">
+                <div className={cn(
+                  "w-full flex flex-col items-center gap-8 p-4 rounded-3xl transition-all duration-500",
+                  myPlayer && myPlayer.frozenUntil > now && "grayscale blur-[2px] pointer-events-none opacity-80",
+                  myPlayer && myPlayer.shieldedUntil > now && "ring-4 ring-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.3)] bg-blue-500/5"
+                )}>
                   {myPlayer?.eliminated && spectatedPlayer && (
                     <div className="flex items-center gap-3 glass-card bg-pink-500/10 border-pink-500/30 px-6 py-3 rounded-full animate-pulse">
                       <Eye className="w-5 h-5 text-pink-400" />
@@ -747,21 +864,23 @@ export default function App() {
                     boardToDisplay.length <= 16 ? "grid-cols-4 max-w-md" : 
                     boardToDisplay.length <= 24 ? "grid-cols-6 max-w-2xl" : "grid-cols-8 max-w-4xl"
                   )}>
-                    {boardToDisplay.map((card) => (
+                    {boardToDisplay.map((card) => {
+                      const reveal = card.flipped || card.matched || (peekActive && boardToDisplay === myBoard);
+                      return (
                       <motion.div
                         key={card.id}
                         initial={false}
-                        animate={{ rotateY: (card.flipped || card.matched) ? 180 : 0 }}
+                        animate={{ rotateY: reveal ? 180 : 0 }}
                         transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                        whileHover={!card.flipped && !card.matched && !myPlayer?.eliminated ? { scale: 1.05, y: -4 } : {}}
-                        whileTap={!card.flipped && !card.matched && !myPlayer?.eliminated ? { scale: 0.95 } : {}}
-                        onClick={() => !card.flipped && !card.matched && !myPlayer?.eliminated && flipCard(card.id)}
+                        whileHover={!reveal && !myPlayer?.eliminated ? { scale: 1.05, y: -4 } : {}}
+                        whileTap={!reveal && !myPlayer?.eliminated ? { scale: 0.95 } : {}}
+                        onClick={() => !reveal && !myPlayer?.eliminated && flipCard(card.id)}
                         className="aspect-square cursor-pointer relative preserve-3d"
                       >
                         {/* Front of Card (Hidden) */}
                         <div className={cn(
                           "absolute inset-0 rounded-2xl glass-card bg-white/5 border-white/10 flex items-center justify-center backface-hidden shadow-lg",
-                          !card.flipped && !card.matched && !myPlayer?.eliminated && "hover:border-purple-500/50 hover:bg-purple-500/5"
+                          !reveal && !myPlayer?.eliminated && "hover:border-purple-500/50 hover:bg-purple-500/5"
                         )}>
                           <div className="w-8 h-8 rounded-full border-2 border-white/5 flex items-center justify-center">
                             <Brain className="w-4 h-4 text-white/10" />
@@ -782,7 +901,7 @@ export default function App() {
                           </span>
                         </div>
                       </motion.div>
-                    ))}
+                    )})}
                   </div>
                 </div>
               )}

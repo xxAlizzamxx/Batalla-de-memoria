@@ -16,6 +16,10 @@ interface Player {
   eliminated: boolean;
   board: Card[];
   ws: WebSocket;
+  combo: number;
+  skills: Record<string, number>;
+  frozenUntil: number;
+  shieldedUntil: number;
 }
 
 interface Card {
@@ -95,8 +99,8 @@ function startRound(roomId: string, round: number) {
     const p = room.players[id];
     const gsp = room.gameState.players[id];
     if (gsp) {
-      gsp.score = 0;
       gsp.timeSpent = 0;
+      gsp.combo = 0;
       if (!gsp.eliminated) {
         p.board = generateBoard(round);
         gsp.board = p.board;
@@ -233,7 +237,11 @@ async function startServer() {
             timeSpent: 0, 
             eliminated: false, 
             board: [],
-            ws 
+            ws,
+            combo: 0,
+            skills: { peek: 0, freeze: 0, shield: 0, shuffle: 0 },
+            frozenUntil: 0,
+            shieldedUntil: 0
           };
           room.gameState.players[id] = { 
             id, 
@@ -242,7 +250,11 @@ async function startServer() {
             totalScore: 0, 
             timeSpent: 0, 
             eliminated: false,
-            board: []
+            board: [],
+            combo: 0,
+            skills: { peek: 0, freeze: 0, shield: 0, shuffle: 0 },
+            frozenUntil: 0,
+            shieldedUntil: 0
           };
           
           ws.send(JSON.stringify({ type: "JOIN_SUCCESS", id, roomId }));
@@ -275,6 +287,7 @@ async function startServer() {
           const flipRoom = rooms[currentRoomId];
           const gsp = flipRoom.gameState.players[id];
           if (!flipRoom.gameState.started || !gsp || gsp.eliminated || flipRoom.gameState.status !== "PLAYING") return;
+          if (gsp.frozenUntil > Date.now()) return;
           
           const playerBoard = gsp.board;
           const currentlyFlipped = playerBoard.filter(c => c.flipped && !c.matched);
@@ -295,12 +308,21 @@ async function startServer() {
               if (checkFlipped[0].value === checkFlipped[1].value) {
                 checkFlipped[0].matched = true;
                 checkFlipped[1].matched = true;
-                gsp.score += 1;
+                gsp.combo += 1;
+                gsp.score += (10 + gsp.combo * 5);
                 
-                ws.send(JSON.stringify({ type: "MATCH_FOUND", playerId: id }));
+                if (Math.random() < 0.3) {
+                  const abilities = ["peek", "freeze", "shield", "shuffle"];
+                  const granted = abilities[Math.floor(Math.random() * abilities.length)];
+                  gsp.skills[granted] = (gsp.skills[granted] || 0) + 1;
+                  ws.send(JSON.stringify({ type: "SKILL_GAINED", skill: granted }));
+                }
+
+                ws.send(JSON.stringify({ type: "MATCH_FOUND", playerId: id, combo: gsp.combo }));
               } else {
                 checkFlipped[0].flipped = false;
                 checkFlipped[1].flipped = false;
+                gsp.combo = 0;
                 ws.send(JSON.stringify({ type: "MISMATCH" }));
               }
               broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
@@ -308,6 +330,58 @@ async function startServer() {
           } else {
             broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
           }
+          break;
+
+        case "USE_SKILL":
+          if (!currentRoomId || !rooms[currentRoomId]) return;
+          const skillRoom = rooms[currentRoomId];
+          const skillPlayer = skillRoom.gameState.players[id];
+          if (!skillRoom.gameState.started || !skillPlayer || skillPlayer.eliminated || skillRoom.gameState.status !== "PLAYING") return;
+          
+          const { skill } = message;
+          if (!skillPlayer.skills[skill] || skillPlayer.skills[skill] <= 0) return;
+
+          skillPlayer.skills[skill]--;
+
+          const now = Date.now();
+
+          if (skill === "peek") {
+            ws.send(JSON.stringify({ type: "SKILL_ACTIVATED", skill: "peek" }));
+          } else if (skill === "freeze") {
+            const opponents = Object.values(skillRoom.gameState.players).filter(p => !p.eliminated && p.id !== id);
+            const vulnerable = opponents.filter(p => p.shieldedUntil < now);
+            if (vulnerable.length > 0) {
+              const target = vulnerable[Math.floor(Math.random() * vulnerable.length)];
+              target.frozenUntil = now + 5000;
+              const targetWs = rooms[currentRoomId].players[target.id].ws;
+              targetWs.send(JSON.stringify({ type: "FROZEN_BY", by: skillPlayer.name }));
+              ws.send(JSON.stringify({ type: "SKILL_ACTIVATED", skill: "freeze", target: target.name }));
+            }
+          } else if (skill === "shield") {
+            skillPlayer.shieldedUntil = now + 10000;
+            ws.send(JSON.stringify({ type: "SKILL_ACTIVATED", skill: "shield" }));
+          } else if (skill === "shuffle") {
+            const opponents = Object.values(skillRoom.gameState.players).filter(p => !p.eliminated && p.id !== id);
+            const vulnerable = opponents.filter(p => p.shieldedUntil < now);
+            if (vulnerable.length > 0) {
+              const target = vulnerable[Math.floor(Math.random() * vulnerable.length)];
+              const targetBoard = target.board;
+              const unmatched = targetBoard.filter(c => !c.matched);
+              const values = unmatched.map(c => c.value);
+              values.sort(() => Math.random() - 0.5);
+              let vIdx = 0;
+              targetBoard.forEach(c => {
+                 if (!c.matched) {
+                    c.value = values[vIdx++];
+                    c.flipped = false;
+                 }
+              });
+              const targetWs = rooms[currentRoomId].players[target.id].ws;
+              targetWs.send(JSON.stringify({ type: "SHUFFLED_BY", by: skillPlayer.name }));
+              ws.send(JSON.stringify({ type: "SKILL_ACTIVATED", skill: "shuffle", target: target.name }));
+            }
+          }
+          broadcast(currentRoomId, { type: "GAME_STATE", state: skillRoom.gameState });
           break;
       }
     });
