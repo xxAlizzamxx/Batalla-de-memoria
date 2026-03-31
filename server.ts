@@ -52,6 +52,8 @@ interface GameState {
   totalRounds: number;
   adminId: string | null;
   status: "WAITING" | "PLAYING" | "ROUND_END" | "TOURNAMENT_END";
+  theme: string;
+  skin: string;
 }
 
 interface Room {
@@ -74,17 +76,25 @@ function broadcast(roomId: string, data: any) {
   });
 }
 
-function generateBoard(round: number) {
+function generateBoard(round: number, theme: string = "default") {
   const cardCounts = [16, 24, 32];
   const count = cardCounts[round - 1] || 16;
   const pairCount = count / 2;
 
-  const allValues = [
+  let allValues = [
     "🟥", "🟡", "🔺", "🔷", "⭐", "🌙", "🌀", "💠", 
     "🍀", "💎", "🍎", "🍕", "🚀", "🛸", "👾", "👻", 
     "🎃", "⚡", "🌈", "🔥", "❄️", "🌋", "🪐", "🦄",
     "🐉", "🦁", "🦊", "🐼", "🐨", "🐯", "🐸", "🐙"
   ];
+  
+  if (theme === "tech") {
+    allValues = ["💻", "📱", "⌚", "🕹️", "⌨️", "🖱️", "🎮", "🔋", "🔌", "💾", "💿", "💡", "📡", "🔭", "🔬", "🚀", "🛸", "🛰️", "🤖", "⚙️", "🔧", "🧲", "🧬", "🧪", "🧫", "📺", "📻", "📷", "🎥"];
+  } else if (theme === "animals") {
+    allValues = ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜"];
+  } else if (theme === "abstract") {
+    allValues = ["🔺", "🔴", "🟦", "🟡", "🟩", "♦️", "🔷", "🔶", "🛑", "💠", "🔘", "🔳", "🔲", "〰️", "➰", "➖", "➕", "✖️", "➗", "🎵", "🎶", "♠️", "♣️", "♥️", "♦️", "⚪", "⚫", "🟤", "🟣", "🟠"];
+  }
   
   const values = allValues.slice(0, pairCount);
   const pairs = [...values, ...values];
@@ -124,8 +134,21 @@ Object.keys(room.players).forEach(id => {
     const p = room.players[id];
     const gsp = room.gameState.players[id];
     if (gsp) {
-        gsp.timeSpent = 0;
-        gsp.score = 0;
+// Reset timeSpent, combo, and score
+gsp.timeSpent = 0;
+gsp.combo = 0;
+gsp.score = 0;
+
+// Handle eliminated players and reset their board
+if (gsp.eliminated) {
+    p.board = generateBoard(round, room.gameState.theme);
+    gsp.board = p.board;
+    gsp.skills.peek = (gsp.skills.peek || 0) + 1;
+} else {
+    // Reset board if not eliminated
+    p.board = [];
+    gsp.board = [];
+}
         gsp.board = [];
 
         // Si el jugador está eliminado, asignar un tablero vacío
@@ -290,6 +313,8 @@ async function startServer() {
                 totalRounds: 3,
                 adminId: id,
                 status: "WAITING",
+                theme: "default",
+                skin: "default"
               },
               timerInterval: null
             };
@@ -368,6 +393,24 @@ async function startServer() {
           }
           break;
 
+        case "CHANGE_THEME":
+          if (!currentRoomId || !rooms[currentRoomId]) return;
+          const themeRoom = rooms[currentRoomId];
+          if (themeRoom.gameState.adminId === id) {
+            themeRoom.gameState.theme = message.theme;
+            broadcast(currentRoomId, { type: "GAME_STATE", state: themeRoom.gameState });
+          }
+          break;
+
+        case "CHANGE_SKIN":
+          if (!currentRoomId || !rooms[currentRoomId]) return;
+          const skinRoom = rooms[currentRoomId];
+          if (skinRoom.gameState.adminId === id) {
+            skinRoom.gameState.skin = message.skin;
+            broadcast(currentRoomId, { type: "GAME_STATE", state: skinRoom.gameState });
+          }
+          break;
+
         case "FLIP_CARD":
           if (!currentRoomId || !rooms[currentRoomId]) return;
           const flipRoom = rooms[currentRoomId];
@@ -397,50 +440,45 @@ async function startServer() {
           const flippedCards = activeBoard.filter(c => c.flipped && !c.matched);
 
           if (flippedCards.length === 2) {
-            broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
-            setTimeout(() => {
-              const checkFlipped = activeBoard.filter(c => c.flipped && !c.matched);
-              if (checkFlipped.length !== 2) return;
+    broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
+    setTimeout(() => {
+        const checkFlipped = activeBoard.filter(c => c.flipped && !c.matched);
+        if (checkFlipped.length !== 2) return;
 
-              if (checkFlipped[0].value === checkFlipped[1].value) {
-                checkFlipped[0].matched = true;
-                checkFlipped[1].matched = true;
-              // Incrementar el combo y puntaje basado en el combo
-              gsp.combo += 1;
-              gsp.score += (10 + gsp.combo * 5);
+        if (checkFlipped[0].value === checkFlipped[1].value) {
+            checkFlipped[0].matched = true;
+            checkFlipped[1].matched = true;
+            // Incrementar el combo y puntaje basado en el combo
+            gsp.combo += 1;
+            gsp.score += (10 + gsp.combo * 5);
+            
+            // Si el random está por debajo de 0.3 o el combo llega a 3, incrementar más
+            if (Math.random() < 0.3 || gsp.combo >= 3) {
+                const abilities = ["peek", "freeze", "shield", "shuffle"];
+                const granted = abilities[Math.floor(Math.random() * abilities.length)];
+                gsp.skills[granted] = (gsp.skills[granted] || 0) + 1;
+                ws.send(JSON.stringify({ type: "SKILL_GAINED", skill: granted }));
+            }
 
-              // Si el modo es "TEAMS", se suma al puntaje del equipo actual
-              if (mode === "TEAMS" && currentTeam) {
-                  currentTeam.score += 1;
-              } else {
-                  // Si no es modo equipos, se mantiene el puntaje individual
-                  gsp.score += 1;
-              } 
-                  if (Math.random() < 0.3) {
-                  const abilities = ["peek", "freeze", "shield", "shuffle"];
-                  const granted = abilities[Math.floor(Math.random() * abilities.length)];
-                  gsp.skills[granted] = (gsp.skills[granted] || 0) + 1;
-                  ws.send(JSON.stringify({ type: "SKILL_GAINED", skill: granted }));
-                }
+            ws.send(JSON.stringify({ type: "MATCH_FOUND", playerId: id, combo: gsp.combo }));
+        } else {
+            checkFlipped[0].flipped = false;
+            checkFlipped[1].flipped = false;
+            gsp.combo = 0;
 
-                ws.send(JSON.stringify({ type: "MATCH_FOUND", playerId: id, combo: gsp.combo }));
-              } else {
-                checkFlipped[0].flipped = false;
-                checkFlipped[1].flipped = false;
-                gsp.combo = 0;
-                
-                if (mode === "TEAMS" && currentTeam) {
-                   // Switch turn to the other teammate
-                   currentTeam.currentTurn = currentTeam.playerIds.find(p => p !== id) || id;
-                }
-                ws.send(JSON.stringify({ type: "MISMATCH" }));
-              }
-              broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
-            }, 1000);
-          } else {
-            broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
-          }
-          break;
+            // Lógica de turno para equipos
+            if (mode === "TEAMS" && currentTeam) {
+                // Cambiar el turno al otro compañero de equipo
+                currentTeam.currentTurn = currentTeam.playerIds.find(p => p !== id) || id;
+            }
+
+            ws.send(JSON.stringify({ type: "MISMATCH" }));
+        }
+        broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
+    }, 1000);
+} else {
+    broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
+}
 
         case "USE_SKILL":
           if (!currentRoomId || !rooms[currentRoomId]) return;

@@ -62,6 +62,8 @@ interface GameState {
   totalRounds: number;
   adminId: string | null;
   status: "WAITING" | "PLAYING" | "ROUND_END" | "TOURNAMENT_END";
+  theme: string;
+  skin: string;
 }
 
 // Sound Utilities
@@ -238,6 +240,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [peekActive, setPeekActive] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [matchParticles, setMatchParticles] = useState<{id: number, x: number, y: number}[]>([]);
 
   useEffect(() => {
     const int = setInterval(() => setNow(Date.now()), 1000);
@@ -334,6 +337,10 @@ export default function App() {
         if (message.combo && message.combo > 1) {
           addNotification(`¡Combo x${message.combo}!`, "success");
         }
+        setMatchParticles(prev => [...prev, { id: Date.now(), x: Math.random() * 80 + 10, y: Math.random() * 80 + 10 }]);
+        setTimeout(() => {
+          setMatchParticles(prev => prev.slice(1));
+        }, 1000);
       } else if (message.type === "MISMATCH") {
         playMismatchSound();
       } else if (message.type === "GAME_OVER") {
@@ -554,8 +561,17 @@ export default function App() {
     );
   }
 
+  const getCurrentSkinClass = () => {
+    switch (gameState?.skin) {
+      case "cyberpunk": return "theme-cyberpunk";
+      case "minimalist": return "theme-minimalist";
+      case "retro": return "theme-retro";
+      default: return "";
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 relative overflow-hidden">
+    <div className={cn("min-h-screen bg-[#050505] text-white p-4 md:p-8 relative overflow-hidden transition-colors duration-500", getCurrentSkinClass())}>
       <div className="atmosphere" />
       
       {/* Notifications */}
@@ -674,9 +690,45 @@ export default function App() {
             </div>
 
             {gameState?.status === "WAITING" && isAdmin && (
+              <div className="glass-card p-6 mb-6 border-white/5 space-y-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-400 mb-2">
+                  <Sparkles className="w-4 h-4" /> Personalizar Arena
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Temática de Cartas</label>
+                  <select 
+                    value={gameState.theme || "default"}
+                    onChange={(e) => socket?.send(JSON.stringify({ type: "CHANGE_THEME", theme: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                  >
+                    <option value="default" className="bg-black">😃 Emojis Clásicos</option>
+                    <option value="tech" className="bg-black">💻 Tecnología & Cyber</option>
+                    <option value="animals" className="bg-black">🦊 Animales Salvajes</option>
+                    <option value="abstract" className="bg-black">🔶 Formas y Símbolos</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Skin del Tablero</label>
+                  <select 
+                    value={gameState.skin || "default"}
+                    onChange={(e) => socket?.send(JSON.stringify({ type: "CHANGE_SKIN", skin: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                  >
+                    <option value="default" className="bg-black">🌌 Cosmos Original</option>
+                    <option value="cyberpunk" className="bg-black">🌆 Cyberpunk Neón</option>
+                    <option value="minimalist" className="bg-black">⬜ Minimalista Oscuro</option>
+                    <option value="retro" className="bg-black">👾 Arcade Retro</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {gameState?.status === "WAITING" && isAdmin && (
               <div className="space-y-4">
                 <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Modo de Juego</div>
                 <div className="grid grid-cols-1 gap-3">
+                  {/* Modos de juego */}
                   <button
                     onClick={() => setSelectedMode("FFA")}
                     className={cn("p-4 rounded-xl border transition-all flex items-center gap-3", selectedMode === "FFA" ? "bg-purple-500/20 border-purple-500 shadow-lg shadow-purple-500/20" : "bg-white/5 border-white/10 hover:bg-white/10")}
@@ -821,6 +873,21 @@ export default function App() {
 
             {/* Game Board */}
             <div className="relative glass-card p-4 md:p-8 border-white/5 min-h-[400px] flex items-center justify-center overflow-hidden">
+              <AnimatePresence>
+                {matchParticles.map(p => (
+                  <motion.div
+                    key={p.id}
+                    initial={{ opacity: 1, scale: 0, top: p.y + "%", left: p.x + "%" }}
+                    animate={{ opacity: 0, scale: 4, top: (p.y - 20) + "%" }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 1 }}
+                    className="absolute z-20 pointer-events-none"
+                  >
+                    <Sparkles className="w-12 h-12 text-yellow-500 mix-blend-screen" />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
               {gameState?.status === "WAITING" && (
                 <div className="text-center space-y-6">
                   <Brain className="w-24 h-24 mx-auto text-purple-500/20 animate-pulse" />
@@ -1058,6 +1125,70 @@ export default function App() {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(255, 255, 255, 0.2);
         }
+          .theme-cyberpunk {
+          background-color: #0b0c10 !important;
+          font-family: monospace;
+        }
+        .theme-cyberpunk h1, .theme-cyberpunk .text-glow {
+          color: #0ff !important;
+          text-shadow: 0 0 10px #0ff;
+        }
+        .theme-cyberpunk .glass-card {
+          border: 1px solid #0ff !important;
+          background: rgba(0, 255, 255, 0.05) !important;
+          box-shadow: 0 0 10px rgba(0, 255, 255, 0.1) !important;
+        }
+        .theme-cyberpunk button.bg-gradient-to-r {
+          background: linear-gradient(90deg, #ff00ff, #00ffff) !important;
+          color: black !important;
+          text-shadow: none !important;
+          box-shadow: 0 0 20px rgba(0, 255, 255, 0.5) !important;
+        }
+
+        .theme-minimalist {
+          background-color: #111 !important;
+        }
+        .theme-minimalist .glass-card {
+           background: transparent !important;
+           border: 1px solid rgba(255, 255, 255, 0.1) !important;
+           border-radius: 4px !important;
+           box-shadow: none !important;
+        }
+        .theme-minimalist button.bg-gradient-to-r, .theme-minimalist button.bg-gradient-to-tr {
+           background: #fff !important;
+           color: #000 !important;
+           border-radius: 4px !important;
+           box-shadow: none !important;
+        }
+        .theme-minimalist .bg-gradient-to-r, .theme-minimalist .bg-gradient-to-tr {
+           background: #fff !important;
+           border-radius: 4px !important;
+        }
+        .theme-minimalist svg.text-white { color: #000 !important; }
+        .theme-minimalist .atmosphere { display: none; }
+        
+        .theme-retro {
+          background-color: #282a36 !important;
+          font-family: "Courier New", Courier, monospace !important;
+          color: #ffb86c !important;
+        }
+        .theme-retro h1, .theme-retro .text-glow {
+          color: #bd93f9 !important;
+          text-shadow: 4px 4px 0px rgba(0,0,0,0.5);
+        }
+        .theme-retro .glass-card {
+          border: 4px solid #ffb86c !important;
+          border-radius: 0 !important;
+          background: #282a36 !important;
+          box-shadow: -4px 4px 0px #bd93f9 !important;
+        }
+        .theme-retro button.bg-gradient-to-r {
+          background: #ff79c6 !important;
+          border-radius: 0 !important;
+          border: 4px solid #bd93f9 !important;
+          box-shadow: -4px 4px 0px rgba(0,0,0,0.5) !important;
+        }
+        .theme-retro .atmosphere { display: none; }
       `}</style>
     </div>
   );
