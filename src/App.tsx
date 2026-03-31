@@ -14,38 +14,38 @@ import { startRoundTransaction, checkRoundTimerTransaction, flipCardTransaction,
 const playMatchSound = () => {
   const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const masterGain = ctx.createGain();
-  masterGain.gain.setValueAtTime(0.3, ctx.currentTime);
+  masterGain.gain.setValueAtTime(0.5, ctx.currentTime);
   masterGain.connect(ctx.destination);
   if (ctx.state === 'suspended') ctx.resume();
 
-  [880, 1320, 1760].forEach((freq, i) => {
+  [523.25, 659.25, 1046.50].forEach((freq, i) => {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.05);
-    g.gain.setValueAtTime(0.5, ctx.currentTime + i * 0.05);
-    g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.05 + 0.1);
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08);
+    g.gain.setValueAtTime(0.6, ctx.currentTime + i * 0.08);
+    g.gain.setTargetAtTime(0, ctx.currentTime + i * 0.08, 0.05);
     osc.connect(g);
     g.connect(masterGain);
-    osc.start(ctx.currentTime + i * 0.05);
-    osc.stop(ctx.currentTime + i * 0.05 + 0.1);
+    osc.start(ctx.currentTime + i * 0.08);
+    osc.stop(ctx.currentTime + i * 0.08 + 0.2);
   });
 };
 
 const playMismatchSound = () => {
   const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const masterGain = ctx.createGain();
-  masterGain.gain.setValueAtTime(0.3, ctx.currentTime);
+  masterGain.gain.setValueAtTime(0.4, ctx.currentTime);
   masterGain.connect(ctx.destination);
   if (ctx.state === 'suspended') ctx.resume();
 
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
   osc.type = "sawtooth";
-  osc.frequency.setValueAtTime(110, ctx.currentTime);
-  osc.frequency.linearRampToValueAtTime(55, ctx.currentTime + 0.3);
-  g.gain.setValueAtTime(0.5, ctx.currentTime);
-  g.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+  osc.frequency.setValueAtTime(220, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.2);
+  g.gain.setValueAtTime(0.6, ctx.currentTime);
+  g.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
   osc.connect(g);
   g.connect(masterGain);
   osc.start();
@@ -244,7 +244,10 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [spectatingId, setSpectatingId] = useState<string | null>(null);
-  const [roomId, setRoomId] = useState<string>("");
+  const [roomId, setRoomId] = useState<string>(() => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    return params.get("room")?.toUpperCase() || "";
+  });
   const [joiningRoom, setJoiningRoom] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -266,6 +269,7 @@ export default function App() {
 
   const [lastEventId, setLastEventId] = useState<string | null>(null);
   const [activeSkillAnim, setActiveSkillAnim] = useState<string | null>(null);
+  const [comboAnim, setComboAnim] = useState<number | null>(null);
 
   useEffect(() => {
     if (gameState?.lastEvent && gameState.lastEvent.id !== lastEventId) {
@@ -420,6 +424,8 @@ export default function App() {
       if (ev.type === "MATCH_FOUND" && ev.playerId === myId) {
         playMatchSound();
         if (ev.combo && ev.combo > 1) {
+          setComboAnim(ev.combo);
+          setTimeout(() => setComboAnim(null), 1500);
           addNotification(`¡Combo x${ev.combo}!`, "success");
         }
         setMatchParticles(prev => [...prev, { id: Date.now(), x: Math.random() * 80 + 10, y: Math.random() * 80 + 10 }]);
@@ -435,7 +441,7 @@ export default function App() {
             unflipCardsTransaction(roomId, myId);
           }
           setIsWaitingForUnflip(false);
-        }, 1000);
+        }, 350);
       }
       // Status notifications
       if (ev.type === "SKILL_ACTIVATED") {
@@ -558,100 +564,265 @@ export default function App() {
     <div className={cn("min-h-screen bg-[#050505] text-white p-4 md:p-8 relative transition-colors duration-500", getCurrentSkinClass())}>
       <div className="atmosphere" />
       
-      {/* Header */}
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-8 relative z-20">
-        <div className="flex items-center gap-3">
+      {/* Header Container Centrado */}
+      <div className="w-full max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between glass-card bg-white/5 px-6 py-4 border border-white/10 rounded-2xl shadow-xl backdrop-blur-md mb-8 relative z-20">
+        
+        {/* Align Left: Titulo */}
+        <div className="flex items-center gap-3 w-full md:w-auto mb-4 md:mb-0 justify-center md:justify-start">
            <div className="p-2 bg-purple-500 rounded-lg"><Brain className="w-6 h-6" /></div>
-           <h1 className="text-2xl font-serif font-bold">Memory Battle</h1>
+           <h1 className="text-xl md:text-2xl font-serif font-bold tracking-tight">Memory Battle</h1>
         </div>
-        <div className="flex items-center gap-4">
-           <div className="flex items-center gap-2 glass-card bg-white/5 px-4 py-2">
-              <span className="text-[10px] font-bold uppercase text-white/30 truncate max-w-16">Sala {roomId}</span>
-              <div className="flex gap-1">
-                 <button onClick={() => resetRoomTransaction(roomId)} title="Reiniciar Sala" className="p-1 hover:bg-white/10 rounded transition-colors"><RefreshCw className="w-4 h-4 text-white/40" /></button>
-                 <button onClick={() => setChatOpen(!chatOpen)} className="p-1 hover:bg-white/10 rounded transition-colors"><Share2 className="w-4 h-4 text-white/40" /></button>
-              </div>
+        
+        {/* Align Right: Botones y Sala */}
+        <div className="flex flex-wrap items-center justify-center md:justify-end gap-3 flex-1">
+           <div className="flex items-center gap-2 border-r border-white/10 pr-3">
+              <span className="text-[10px] font-bold uppercase text-white/40">Sala</span>
+              <span className="text-sm font-black text-purple-400 tracking-widest">{roomId}</span>
+           </div>
+           
+           <div className="flex items-center gap-2 border-r border-white/10 pr-3">
+              <span className="text-[10px] font-bold uppercase text-white/40">Ronda</span>
+              <span className="text-sm font-black text-pink-400">{gameState?.currentRound || 1} <span className="text-[10px] text-white/30">/ {gameState?.totalRounds || 3}</span></span>
+           </div>
+           
+           <button 
+             onClick={() => {
+                const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+                navigator.clipboard.writeText(link);
+                setShowCopied(true);
+                setTimeout(() => setShowCopied(false), 2000);
+             }}
+             className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-600/20 to-pink-600/20 hover:from-purple-600/40 hover:to-pink-600/40 rounded-lg transition-all border border-purple-500/20 hover:border-purple-500/50 group"
+           >
+              {showCopied ? (
+                 <span className="text-[10px] font-bold uppercase text-green-400 flex items-center gap-1">¡Copiado!</span>
+              ) : (
+                 <>
+                    <UserPlus className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+                    <span className="text-[10px] font-bold uppercase text-purple-300">Invitar a Amigos</span>
+                 </>
+              )}
+           </button>
+
+           <div className="flex items-center gap-2 border-l border-white/10 pl-3">
+              <button onClick={() => resetRoomTransaction(roomId)} title="Reiniciar Sala" className="glass-card bg-white/5 p-2 hover:bg-white/10 rounded-lg transition-colors border border-white/10">
+                 <RefreshCw className="w-4 h-4 text-white/60" />
+              </button>
+              <button onClick={() => setChatOpen(!chatOpen)} title="Chat" className="glass-card bg-white/5 p-2 hover:bg-white/10 rounded-lg transition-colors border border-white/10">
+                 <Share2 className="w-4 h-4 text-white/60" />
+              </button>
            </div>
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
+      <div className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 justify-center">
         {/* Sidebar */}
         <div className="w-full lg:w-80 shrink-0 space-y-6">
-           {gameState?.status !== "PLAYING" && (
-             <div className="glass-card p-6">
-                <div className="text-xs font-bold uppercase tracking-widest text-purple-400 mb-4">Jugadores</div>
-                <div className="space-y-2">
-                   {(playersList as Player[]).map((p: Player) => (
-                      <div key={p.id} className="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
-                         <img src={p.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.id}`} className="w-8 h-8 rounded-full border border-purple-500/30" />
-                         <span className="text-sm truncate flex-1">{p.name} {p.id === myId && "(Tú)"}</span>
-                         <span className="text-xs font-bold">{p.totalScore}</span>
-                         {gameState?.adminId === p.id && <Shield className="w-3 h-3 text-purple-400" />}
-                      </div>
-                   ))}
-                </div>
+           
+           {/* Perfiles de Jugador en Juego */}
+           {gameState?.status === "PLAYING" && (
+             <div className="glass-card p-4 flex justify-between items-start">
+               {currentMode === "TEAMS" && myTeam ? (() => { 
+                  const isBlue = myTeam.name.toLowerCase().includes("azul");
+                  return (
+                     <div className="flex flex-col items-center gap-2 w-[48%]">
+                        <div className={cn("relative p-0.5 bg-gradient-to-b rounded-full shadow-lg", isBlue ? "from-blue-400 to-blue-600" : "from-pink-400 to-pink-600")}>
+                           <div className={cn("w-12 h-12 rounded-full border-2 border-black flex items-center justify-center font-black text-xl text-white", isBlue ? "bg-blue-900" : "bg-pink-900")}>
+                              {myTeam.name[0]}
+                           </div>
+                           <div className={cn("absolute -bottom-2 left-1/2 -translate-x-1/2 text-[5px] px-2 py-0.5 rounded-full font-black shadow-lg uppercase text-white", isBlue ? "bg-blue-600" : "bg-pink-600")}>Tu Eq.</div>
+                        </div>
+                        <div className="text-[9px] font-black uppercase tracking-tighter w-full text-center truncate">{myTeam.name}</div>
+                     </div>
+                  );
+               })() : ( 
+                 <div className="flex flex-col items-center gap-3 w-[48%]">
+                   <div className="relative">
+                     <AnimatePresence>
+                        {myPlayer?.lastReaction && String(myPlayer.lastReaction) !== "0" && (myPlayer.reactionTime || 0) > Date.now() - 3000 && (
+                           <motion.div initial={{ scale: 0, y: 0 }} animate={{ scale: 1.5, y: -30 }} exit={{ scale: 0, opacity: 0 }} className="absolute -top-8 left-1/2 -translate-x-1/2 text-3xl z-50">
+                              {myPlayer.lastReaction}
+                           </motion.div>
+                        )}
+                     </AnimatePresence>
+                     {(myPlayer?.shieldedUntil || 0) > Date.now() && <div className="absolute inset-0 bg-yellow-400/20 rounded-full animate-pulse border-2 border-yellow-400/50 scale-150 z-20" />}
+                     <div className={cn("relative p-0.5 bg-gradient-to-b from-blue-400 to-blue-600 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.3)] duration-500 z-10", (myPlayer?.frozenUntil || 0) > Date.now() ? "grayscale scale-90" : "scale-100")}>
+                       <img src={myPlayer?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${myId}`} className="w-14 h-14 rounded-full border-2 border-black" />
+                       <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-blue-600 text-[6px] px-2 py-0.5 rounded-full font-black shadow-lg uppercase text-white">Tú</div>
+                     </div>
+                   </div>
+                   <div className="text-center w-full">
+                      <div className="text-[10px] font-black text-blue-400 uppercase tracking-tighter w-full truncate">{myPlayer?.name}</div>
+                      {(myPlayer?.shieldedUntil || 0) > Date.now() && <div className="text-[7px] uppercase font-bold text-yellow-500 flex items-center justify-center animate-bounce"><Shield className="w-2 h-2" /> Activo</div>}
+                   </div>
+                   <div className="grid grid-cols-2 gap-1 p-1 bg-white/5 rounded-xl border border-white/5 w-fit mx-auto mt-2">
+                      {["😂", "😡", "😭", "🎉", "🔥", "🚀", "❤️", "👻"].map(emoji => (
+                         <button key={emoji} onClick={() => sendReaction(emoji)} className="flex items-center justify-center hover:bg-white/10 rounded-md transition-transform active:scale-90 text-lg md:text-xl p-1 w-8 h-8 md:w-10 md:h-10">
+                            {emoji}
+                         </button>
+                      ))}
+                   </div>
+                 </div>
+               )}
+
+               <div className="w-px h-full bg-white/10 min-h-[100px]" />
+
+               {(currentMode === "1V1" || currentMode === "TEAMS") ? (
+                   currentMode === "TEAMS" ? (() => { 
+                     const rivalTeam = (Object.values(gameState.teams || {}) as Team[]).find(t => t.id !== myTeam?.id);
+                     if (!rivalTeam) return <div className="w-[48%]" />;
+                     const isRojo = rivalTeam.name.toLowerCase().includes("rojo");
+                     return (
+                        <div className="flex flex-col items-center gap-2 w-[48%]">
+                           <div className={cn("relative p-0.5 bg-gradient-to-b rounded-full shadow-lg", isRojo ? "from-pink-400 to-pink-600" : "from-blue-400 to-blue-600")}>
+                              <div className={cn("w-12 h-12 rounded-full border-2 border-black flex items-center justify-center font-black text-xl text-white", isRojo ? "bg-pink-900" : "bg-blue-900")}>
+                                 {rivalTeam.name[0]}
+                              </div>
+                              <div className={cn("absolute -bottom-2 left-1/2 -translate-x-1/2 text-[5px] px-2 py-0.5 rounded-full font-black shadow-lg uppercase text-white", isRojo ? "bg-pink-600" : "bg-blue-600")}>Rival</div>
+                           </div>
+                           <div className="text-[9px] font-black uppercase tracking-tighter w-full text-center truncate">{rivalTeam.name}</div>
+                        </div>
+                     );
+                   })() : (() => { 
+                     const rival = playersList.find(p => p.id !== myId);
+                     return (
+                       <div className="flex flex-col items-center gap-3 w-[48%]">
+                         <div className="relative">
+                           <AnimatePresence>
+                              {rival?.lastReaction && String(rival.lastReaction) !== "0" && (rival.reactionTime || 0) > Date.now() - 3000 && (
+                                 <motion.div initial={{ scale: 0, y: 0 }} animate={{ scale: 1.5, y: -30 }} exit={{ scale: 0, opacity: 0 }} className="absolute -top-8 left-1/2 -translate-x-1/2 text-3xl z-50">
+                                    {rival.lastReaction}
+                                 </motion.div>
+                              )}
+                           </AnimatePresence>
+                           <div className={cn("relative p-0.5 bg-gradient-to-b from-pink-400 to-pink-600 rounded-full shadow-[0_0_15px_rgba(236,72,153,0.3)] duration-500", (rival?.frozenUntil || 0) > Date.now() ? "grayscale scale-110" : "")}>
+                             <img src={rival?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=opp`} className="w-14 h-14 rounded-full border-2 border-black" />
+                             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-pink-600 text-[6px] px-2 py-0.5 rounded-full font-black shadow-lg uppercase text-white">Rival</div>
+                           </div>
+                         </div>
+                         <div className="text-center w-full">
+                            <div className="text-[10px] font-black text-pink-400 uppercase tracking-tighter w-full truncate">{rival?.name || "Buscando..."}</div>
+                            {(rival?.frozenUntil || 0) > Date.now() && <div className="text-[7px] uppercase font-bold text-cyan-300 flex items-center justify-center animate-pulse"><Snowflake className="w-2 h-2" /> Congelado</div>}
+                         </div>
+                       </div>
+                     );
+                   })()
+               ) : ( 
+                  <div className="w-[48%] flex items-center justify-center opacity-30 text-[9px] uppercase font-black tracking-widest text-center mt-6">Contra<br/>Todos</div>
+               )}
              </div>
            )}
+
+           <div className="glass-card p-6">
+              <div className="text-xs font-bold uppercase tracking-widest text-purple-400 mb-4">Jugadores</div>
+              <div className="space-y-2">
+                 {(playersList as Player[]).map((p: Player) => (
+                    <div key={p.id} className="flex items-center gap-3 p-2 bg-white/5 rounded-lg border border-transparent hover:border-purple-500/30 transition-all">
+                       <img src={p.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.id}`} className="w-8 h-8 rounded-full border border-purple-500/30" />
+                       <span className="text-sm truncate flex-1">{p.name} {p.id === myId && "(Tú)"}</span>
+                       <span className="text-xs font-bold">{p.totalScore} pts</span>
+                       {gameState?.adminId === p.id && <Shield className="w-3 h-3 text-purple-400" />}
+                    </div>
+                 ))}
+              </div>
+           </div>
 
            {/* Personalization for ALL */}
            {gameState?.status !== "PLAYING" && (
              <div className="glass-card p-6 space-y-4">
-                <div className="text-[10px] font-black uppercase tracking-widest text-purple-400 opacity-50">Personalización</div>
-                <div className="space-y-3">
-                   <div className="space-y-1">
-                      <label className="text-[9px] uppercase font-bold text-white/20">Fichas</label>
-                      <select value={myPlayer?.theme} onChange={(e) => updateDoc(doc(db, "rooms", roomId!), { [`players.${myId}.theme`]: e.target.value })} className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-purple-500">
-                         <option value="default">Emojis Mixtos</option>
-                         <option value="tech">Tecnología / Sci-Fi</option>
-                         <option value="animals">Mundo Animal</option>
-                         <option value="abstract">Formas Geométricas</option>
-                         <option value="fantasy">Fantasía / Rol</option>
-                         <option value="food">Comida / Chef</option>
-                         <option value="space">Galaxia / Espacio</option>
-                      </select>
+                <div className="text-[10px] font-black uppercase tracking-widest text-purple-400 opacity-50 mb-4">Personalización</div>
+                <div className="space-y-4">
+                   <div className="space-y-2">
+                       <label className="text-[9px] uppercase font-bold text-white/20 block">Fichas</label>
+                       <div className="grid grid-cols-2 gap-2">
+                         {[
+                            { id: "default", label: "Mixtos", icon: "🎲" },
+                            { id: "tech", label: "Sci-Fi", icon: "🤖" },
+                            { id: "animals", label: "Animal", icon: "🦁" },
+                            { id: "abstract", label: "Formas", icon: "🔶" },
+                            { id: "fantasy", label: "Leyendas", icon: "🐉" },
+                            { id: "food", label: "Culinario", icon: "🍕" },
+                            { id: "space", label: "Cosmos", icon: "🚀" }
+                         ].map(theme => (
+                             <button key={theme.id} onClick={() => updateDoc(doc(db, "rooms", roomId!), { [`players.${myId}.theme`]: theme.id })} className={cn("flex items-center gap-2 p-2 rounded-xl border transition-all text-xs hover:scale-105 active:scale-95", myPlayer?.theme === theme.id ? "bg-purple-500/20 border-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]" : "bg-white/5 border-white/10 opacity-50 hover:opacity-100")}>
+                                <span className="text-lg leading-none">{theme.icon}</span>
+                                <span className="truncate">{theme.label}</span>
+                             </button>
+                         ))}
+                       </div>
                    </div>
-                   <div className="space-y-1">
-                      <label className="text-[9px] uppercase font-bold text-white/20">Interfaz</label>
-                      <select value={myPlayer?.skin} onChange={(e) => updateDoc(doc(db, "rooms", roomId!), { [`players.${myId}.skin`]: e.target.value })} className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-purple-500">
-                         <option value="default">Diseño Cosmos</option>
-                         <option value="retro">Clásico Retro</option>
-                         <option value="cyberpunk">Neon Cyberpunk</option>
-                         <option value="deepsea">Abismo Marino</option>
-                         <option value="inferno">Infierno Ardiente</option>
-                         <option value="matrix">Matrix Digital</option>
-                      </select>
+                   <div className="space-y-2 pt-2 border-t border-white/5">
+                       <label className="text-[9px] uppercase font-bold text-white/20 block">Interfaz</label>
+                       <div className="grid grid-cols-2 gap-2">
+                         {[
+                            { id: "default", label: "Cosmos", icon: "🌌" },
+                            { id: "retro", label: "Retro", icon: "🕹️" },
+                            { id: "cyberpunk", label: "Néon", icon: "⚡" },
+                            { id: "deepsea", label: "Abismo", icon: "🌊" },
+                            { id: "inferno", label: "Ardiente", icon: "🔥" },
+                            { id: "matrix", label: "Matrix", icon: "💻" }
+                         ].map(skin => (
+                             <button key={skin.id} onClick={() => updateDoc(doc(db, "rooms", roomId!), { [`players.${myId}.skin`]: skin.id })} className={cn("flex items-center gap-2 p-2 rounded-xl border transition-all text-xs hover:scale-105 active:scale-95", myPlayer?.skin === skin.id ? "bg-purple-500/20 border-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]" : "bg-white/5 border-white/10 opacity-50 hover:opacity-100")}>
+                                <span className="text-lg leading-none">{skin.icon}</span>
+                                <span className="truncate">{skin.label}</span>
+                             </button>
+                         ))}
+                       </div>
                    </div>
                 </div>
              </div>
            )}
                         {gameState?.status === "WAITING" && (
                <div className="space-y-4">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-400/50 mb-2">Preparar Partida</div>
-                  <div className="glass-card bg-white/5 p-4 space-y-4">
-                     <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-white/30">Modo de Juego</label>
-                        <select value={selectedMode} onChange={(e) => setSelectedMode(e.target.value as GameMode)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm focus:ring-2 ring-purple-500/50 outline-none transition-all">
-                           <option value="FFA">Todos vs Todos</option>
-                           <option value="1V1">1 vs 1</option>
-                           <option value="TEAMS">Por Equipos</option>
-                        </select>
-                        <button 
-                         onClick={startGame} 
-                         className={cn(
-                           "w-full font-black py-4 rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all text-sm tracking-widest uppercase mt-4",
-                           myPlayer?.skin === "retro" ? "bg-white text-black border-4 border-black" :
-                           myPlayer?.skin === "cyberpunk" ? "bg-cyan-500 text-black shadow-[0_0_20px_rgba(0,255,255,0.5)]" :
-                           myPlayer?.skin === "deepsea" ? "bg-blue-600 text-white" :
-                           myPlayer?.skin === "inferno" ? "bg-orange-600 text-black" :
-                           myPlayer?.skin === "matrix" ? "bg-green-600 text-black" :
-                           "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                  <div className="glass-card bg-white/5 p-5 space-y-6">
+                      <div className="space-y-3">
+                         <label className="text-[10px] uppercase font-bold text-white/30 block text-center">Modo de Juego</label>
+                         
+                         <div className="grid grid-cols-3 gap-2">
+                           <button onClick={() => setSelectedMode("FFA")} className={cn("flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all hover:scale-105 active:scale-95 group", selectedMode === "FFA" ? "bg-purple-500/20 border-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]" : "bg-white/5 border-white/10 opacity-50 hover:opacity-100")}>
+                               <Swords className="w-6 h-6 text-purple-400 group-hover:rotate-12 transition-transform" />
+                               <span className="text-[9px] font-black uppercase tracking-tighter text-center leading-tight">Todos VS<br/>Todos</span>
+                           </button>
+
+                           <button onClick={() => Object.keys(gameState?.players || {}).length === 2 && setSelectedMode("1V1")} className={cn("flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all group", Object.keys(gameState?.players || {}).length !== 2 ? "opacity-20 cursor-not-allowed grayscale" : "hover:scale-105 active:scale-95", selectedMode === "1V1" ? "bg-pink-500/20 border-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.3)]" : "bg-white/5 border-white/10 opacity-50 hover:opacity-100")}>
+                               <div className="flex items-center gap-1 mt-1">
+                                  <UserIcon className="w-4 h-4 text-pink-400 group-hover:-translate-x-1 transition-transform" />
+                                  <span className="text-[8px] font-black italic text-pink-500">VS</span>
+                                  <UserIcon className="w-4 h-4 text-pink-400 group-hover:translate-x-1 transition-transform" />
+                               </div>
+                               <span className="text-[9px] font-black uppercase tracking-tighter text-center leading-tight">1 VS 1 <br/><span className="text-[6px] opacity-50">(2 Jugadores)</span></span>
+                           </button>
+
+                           <button onClick={() => Object.keys(gameState?.players || {}).length === 4 && setSelectedMode("TEAMS")} className={cn("flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all group", Object.keys(gameState?.players || {}).length !== 4 ? "opacity-20 cursor-not-allowed grayscale" : "hover:scale-105 active:scale-95", selectedMode === "TEAMS" ? "bg-blue-500/20 border-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.3)]" : "bg-white/5 border-white/10 opacity-50 hover:opacity-100")}>
+                               <div className="flex items-center justify-center gap-1 font-black text-blue-400 mt-1">
+                                  <Users className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> <span className="text-[8px] italic">VS</span> <Users className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                               </div>
+                               <span className="text-[9px] font-black uppercase tracking-tighter text-center leading-tight">Equipos <br/><span className="text-[6px] opacity-50">(4 Jugadores)</span></span>
+                           </button>
+                         </div>
+                         
+                         {isAdmin ? (
+                           <button 
+                            onClick={startGame} 
+                            className={cn(
+                              "w-full font-black py-4 rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all text-sm tracking-widest uppercase mt-4",
+                              myPlayer?.skin === "retro" ? "bg-white text-black border-4 border-black" :
+                              myPlayer?.skin === "cyberpunk" ? "bg-cyan-500 text-black shadow-[0_0_20px_rgba(0,255,255,0.5)]" :
+                              myPlayer?.skin === "deepsea" ? "bg-blue-600 text-white" :
+                              myPlayer?.skin === "inferno" ? "bg-orange-600 text-black" :
+                              myPlayer?.skin === "matrix" ? "bg-green-600 text-black" :
+                              "bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                            )}
+                           >
+                             Iniciar Batalla
+                           </button>
+                         ) : (
+                           <div className="w-full bg-white/5 border border-white/10 text-white/40 font-black py-4 rounded-xl text-center text-[11px] tracking-widest uppercase mt-4 flex items-center justify-center gap-2 backdrop-blur-sm">
+                             <span className="animate-pulse">Esperando al Anfitrión</span>
+                             <span className="flex gap-1"><span className="w-1 h-1 bg-white/40 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></span><span className="w-1 h-1 bg-white/40 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></span><span className="w-1 h-1 bg-white/40 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></span></span>
+                           </div>
                          )}
-                      >
-                        Iniciar Batalla
-                      </button>
-                      {!isAdmin && <div className="text-[9px] text-center opacity-30 italic mt-2">Cualquier jugador puede iniciar la partida</div>}
-                     </div>
+                      </div>
                   </div>
                </div>
             )}
@@ -672,183 +843,244 @@ export default function App() {
 
          {/* Main Area */}
          <div className="flex-1 flex flex-col items-center">
-           {/* Stats Grid */}
-           {gameState?.status === "PLAYING" && (
-              <div className="w-full max-w-4xl grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                 {[
-                   { label: 'Tiempo', value: `${gameState.time}s`, icon: Timer, color: 'text-purple-400' },
-                   { label: 'Parejas', value: myBoard.filter(c => c.matched).length / 2, icon: Brain, color: 'text-pink-400' },
-                   { label: 'Combo', value: myPlayer?.combo || 0, icon: Flame, color: 'text-orange-400' },
-                   { label: 'Puntos', value: myPlayer?.score || 0, icon: Trophy, color: 'text-yellow-400' }
-                 ].map((stat, i) => (
-                   <div key={i} className="glass-card bg-white/5 p-4 flex flex-col items-center justify-center text-center group hover:bg-white/10 transition-all border-b-2 border-transparent hover:border-purple-500/50">
-                      <stat.icon className={cn("w-5 h-5 mb-2 opacity-50 group-hover:opacity-100 transition-opacity", stat.color)} />
-                      <div className="text-2xl font-black tracking-tighter">{stat.value}</div>
-                      <div className="text-[10px] uppercase font-bold tracking-[0.2em] opacity-30 group-hover:opacity-60 transition-opacity">{stat.label}</div>
-                   </div>
-                 ))}
-              </div>
-           )}
+           {/* Stats Grid - Visible before and during Play */}
+           <div className="w-full max-w-5xl flex flex-wrap justify-center gap-4 mb-8">
+              {[
+                { label: 'Tiempo', value: `${gameState?.time || 0}s`, icon: Timer, color: 'text-purple-400' },
+                { label: 'Parejas', value: myBoard && myBoard.filter ? myBoard.filter(c => c.matched).length / 2 : 0, icon: Brain, color: 'text-pink-400' },
+                { label: 'Combo', value: myPlayer?.combo || 0, icon: Flame, color: 'text-orange-400' },
+                { label: 'Estado', value: gameState?.status === "PLAYING" ? "En Juego" : "Sala de Espera", icon: Zap, color: 'text-green-400' }
+              ].map((stat, i) => (
+                <div key={i} className="flex-1 min-w-[120px] glass-card bg-white/5 p-4 flex flex-col items-center justify-center text-center group hover:bg-white/10 transition-all border-b-2 border-transparent hover:border-purple-500/50">
+                   <stat.icon className={cn("w-6 h-6 mb-2 opacity-50 group-hover:opacity-100 transition-opacity", stat.color)} />
+                   <div className="text-2xl font-black tracking-tighter">{stat.value}</div>
+                   <div className="text-[10px] uppercase font-bold tracking-[0.2em] opacity-30 group-hover:opacity-60 transition-opacity">{stat.label}</div>
+                </div>
+              ))}
+           </div>
  
            {/* Skills above the board */}
            {gameState?.status === "PLAYING" && (
-              <div className="w-full max-w-2xl grid grid-cols-4 gap-2 mb-4 animate-in slide-in-from-top duration-500">
-                 {[
-                   { id: 'peek', icon: Eye, label: 'Vistazo', color: 'text-blue-400' },
-                   { id: 'freeze', icon: Snowflake, label: 'Hielo', color: 'text-cyan-300' },
-                   { id: 'shield', icon: Shield, label: 'Escudo', color: 'text-yellow-400' },
-                   { id: 'shuffle', icon: Shuffle, label: 'Mezclar', color: 'text-purple-400' }
-                 ].map((skill) => (
-                   <button 
-                     key={skill.id}
-                     onClick={() => roomId && myId && useSkillTransaction(roomId, myId, skill.id as any)} 
-                     disabled={!myPlayer?.skills[skill.id as keyof typeof myPlayer.skills]} 
-                     className="flex flex-col items-center justify-center p-2 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 hover:scale-105 active:scale-95 disabled:opacity-20 transition-all group"
-                   >
-                     <div className="relative">
-                        <skill.icon className={cn("w-5 h-5 mb-1", skill.color)} />
-                        {myPlayer?.skills[skill.id as keyof typeof myPlayer.skills]! > 0 && (
-                           <div className="absolute -top-2 -right-2 bg-green-500 text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-bounce">
-                              {myPlayer?.skills[skill.id as keyof typeof myPlayer.skills]}
-                           </div>
-                        )}
-                     </div>
-                     <span className="text-[8px] font-black uppercase tracking-tighter opacity-50">{skill.label}</span>
-                   </button>
-                 ))}
-              </div>
+               <div className="w-full max-w-4xl grid grid-cols-4 gap-4 mb-8 animate-in slide-in-from-top duration-500">
+                  {[
+                    { id: 'peek', icon: Eye, label: 'Vistazo', color: 'text-blue-400' },
+                    { id: 'freeze', icon: Snowflake, label: 'Hielo', color: 'text-cyan-300' },
+                    { id: 'shield', icon: Shield, label: 'Escudo', color: 'text-yellow-400' },
+                    { id: 'shuffle', icon: Shuffle, label: 'Mezclar', color: 'text-purple-400' }
+                  ].map((skill) => (
+                    <button 
+                      key={skill.id}
+                      onClick={() => roomId && myId && useSkillTransaction(roomId, myId, skill.id as any)} 
+                      disabled={!myPlayer?.skills[skill.id as keyof typeof myPlayer.skills]} 
+                      className="flex flex-col items-center justify-center p-4 bg-white/5 rounded-2xl border border-white/10 hover:bg-white/10 hover:scale-105 active:scale-95 disabled:opacity-20 transition-all group shadow-lg"
+                    >
+                      <div className="relative">
+                         <skill.icon className={cn("w-8 h-8 mb-2 drop-shadow-lg", skill.color)} />
+                         {myPlayer?.skills[skill.id as keyof typeof myPlayer.skills]! > 0 && (
+                            <div className="absolute -top-3 -right-3 bg-green-500 text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center animate-bounce shadow-[0_0_10px_rgba(34,197,94,0.5)]">
+                               {myPlayer?.skills[skill.id as keyof typeof myPlayer.skills]}
+                            </div>
+                         )}
+                      </div>
+                      <span className="text-xs font-black uppercase tracking-tighter opacity-80">{skill.label}</span>
+                    </button>
+                  ))}
+               </div>
            )}
 
-            <div className={cn("relative w-full flex flex-col lg:flex-row items-start justify-center gap-8 md:gap-12 p-4 min-h-[50vh]", gameState?.status === "PLAYING" ? "lg:justify-between px-8 lg:px-20 mt-[-20px]" : "justify-center")}>
-               {/* Profile Left (Only during play) */}
-               {gameState?.status === "PLAYING" && (
-                 <div className="hidden lg:flex w-32 flex-col items-center gap-4 animate-float">
-                     {currentMode === "TEAMS" && myTeam ? (() => {
-                        const isBlue = myTeam.name.toLowerCase().includes("azul");
-                        const teamColorClass = isBlue ? "from-blue-400 to-blue-600" : "from-pink-400 to-pink-600";
-                        const teamBgClass = isBlue ? "bg-blue-900" : "bg-pink-900";
-                        const teamTextClass = isBlue ? "text-blue-400" : "text-pink-400";
-                        const teamLabelBg = isBlue ? "bg-blue-600" : "bg-pink-600";
-                        
-                        return (
-                          <div className="flex flex-col items-center gap-2">
-                            <div className={cn("relative p-0.5 bg-gradient-to-b rounded-full shadow-[0_0_15px_rgba(59,130,246,0.3)]", teamColorClass)}>
-                               <div className={cn("w-16 h-16 rounded-full border-2 border-black flex items-center justify-center font-black text-xl", teamBgClass)}>
-                                  {myTeam.name[0]}
-                               </div>
-                               <div className={cn("absolute -bottom-2 left-1/2 -translate-x-1/2 text-[6px] px-2 py-0.5 rounded-full font-black shadow-lg uppercase text-white", teamLabelBg)}>Tu Equipo</div>
-                            </div>
-                            <div className="flex -space-x-2 mt-1">
-                               {myTeam.playerIds.map(pid => (
-                                  <img key={pid} src={gameState.players[pid]?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${pid}`} className="w-6 h-6 rounded-full border border-black" />
-                               ))}
-                            </div>
-                            <div className={cn("text-[10px] font-black uppercase tracking-tighter text-center", teamTextClass)}>{myTeam.name}</div>
-                          </div>
-                        );
-                     })() : (
-                       <div className="flex flex-col items-center gap-4">
-                        <div className="relative">
-                          <AnimatePresence>
-                             {myPlayer?.lastReaction && String(myPlayer.lastReaction) !== "0" && myPlayer.reactionTime && myPlayer.reactionTime > Date.now() - 3000 && (
-                                <motion.div initial={{ scale: 0, y: 0 }} animate={{ scale: 1.5, y: -40 }} exit={{ scale: 0, opacity: 0 }} className="absolute -top-12 left-1/2 -translate-x-1/2 text-4xl z-50">
-                                   {myPlayer.lastReaction}
-                                </motion.div>
-                             )}
-                          </AnimatePresence>
-                          {myPlayer?.shieldedUntil && myPlayer.shieldedUntil > Date.now() && (
-                             <div className="absolute inset-0 bg-yellow-400/20 rounded-full animate-pulse border-4 border-yellow-400/50 shadow-[0_0_30px_rgba(250,204,21,0.5)] z-20 scale-150" />
-                          )}
-                          <div className={cn("relative p-0.5 bg-gradient-to-b from-blue-400 to-blue-600 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-transform duration-500 z-10", myPlayer?.frozenUntil && myPlayer.frozenUntil > Date.now() ? "grayscale scale-90" : "scale-100")}>
-                            <img src={myPlayer?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${myId}`} className="w-16 h-16 rounded-full border-2 border-black" />
-                            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-blue-600 text-[6px] px-2 py-0.5 rounded-full font-black shadow-lg uppercase text-white">Tú</div>
-                          </div>
-                        </div>
-                        <div className="text-center">
-                           <div className="text-[10px] font-black text-blue-400 uppercase tracking-tighter">{myPlayer?.name}</div>
-                           {myPlayer?.shieldedUntil && myPlayer.shieldedUntil > Date.now() && <div className="text-[7px] uppercase font-bold text-yellow-500 flex items-center justify-center gap-1 animate-bounce"><Shield className="w-2 h-2" /> Activo</div>}
-                        </div>
+            <div className="relative w-full flex-1 flex flex-col items-center justify-center min-h-[50vh] mt-[-20px]">
+               <AnimatePresence>
+                  {comboAnim && (
+                     <motion.div
+                        initial={{ scale: 0.5, opacity: 0, y: 50 }}
+                        animate={{ scale: 1.2, opacity: 1, y: 0 }}
+                        exit={{ scale: 2, opacity: 0, y: -50 }}
+                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 font-black italic text-6xl md:text-8xl text-orange-400 drop-shadow-[0_0_30px_rgba(251,146,60,1)] uppercase whitespace-nowrap"
+                     >
+                        COMBO x{comboAnim}
+                     </motion.div>
+                  )}
+               </AnimatePresence>
 
-                        {/* Reaction Grid */}
-                        <div className="grid grid-cols-2 gap-2 bg-white/5 p-2 rounded-2xl border border-white/10 backdrop-blur-sm">
-                           {["😂", "😡", "😭", "🎉", "🔥", "🚀", "❤️", "👻"].map(emoji => (
-                              <button key={emoji} onClick={() => sendReaction(emoji)} className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-transform active:scale-90 text-lg">
-                                 {emoji}
-                              </button>
-                           ))}
+               {gameState?.status === "PLAYING" && currentMode === "1V1" && (() => {
+                  const rival = playersList.find(p => p.id !== myId);
+                  if (!rival || !rival.board) return null;
+                  const rBoard = rival.board;
+                  const rCols = Math.ceil(Math.sqrt(rBoard.length || 16));
+                  return (
+                     <div className="absolute top-0 right-0 md:top-4 md:right-4 w-20 md:w-28 bg-black/40 p-2 rounded-2xl border border-white/10 backdrop-blur-md shadow-2xl z-40 hidden md:flex flex-col">
+                        <div className="text-[8px] uppercase font-black tracking-widest text-pink-400 mb-2 truncate text-center flex items-center justify-center gap-1">
+                           <img src={rival.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${rival.id}`} className="w-3 h-3 rounded-full border border-pink-500" />
+                           {rival.name}
                         </div>
-                      </div>
-                    )}
-                 </div>
-               )}
+                        <div 
+                           className="grid gap-[2px] w-full aspect-square"
+                           style={{ gridTemplateColumns: `repeat(${rCols}, minmax(0, 1fr))` }}
+                        >
+                           {rBoard.map(c => {
+                               const reveal = c.flipped || c.matched;
+                               return (
+                                  <div key={c.id} className={cn("w-full h-full aspect-square rounded-[2px] border", reveal ? (c.matched ? "bg-green-500 border-green-400" : "bg-pink-600 border-pink-400") : "bg-white/10 border-white/5")} />
+                               );
+                           })}
+                        </div>
+                     </div>
+                  );
+               })()}
 
-               {/* Board Area */}
-               <div className="flex-1 flex flex-col items-center justify-center px-4">
                   {gameState?.status === "WAITING" && (
-                    <div className="text-center py-20 bg-white/2 rounded-[40px] border border-dashed border-white/10 w-full max-w-2xl">
-                       <div className="relative inline-block mb-8">
-                          <div className="absolute inset-0 bg-purple-500/20 blur-3xl rounded-full animate-pulse" />
-                          <Brain className="w-24 h-24 text-purple-500 mx-auto relative z-10" />
-                       </div>
-                       <div className="font-serif italic text-white/40 text-2xl mb-2">Preparando la arena mental...</div>
-                       <div className="text-[10px] uppercase tracking-[0.3em] font-black text-white/10">Esperando el inicio de la batalla de memoria</div>
+                    <div className="text-center py-32 bg-white/2 rounded-[50px] border border-dashed border-white/10 w-full max-w-4xl shadow-2xl">
+                       <motion.div 
+                         className="relative inline-block mb-10"
+                         animate={{ opacity: [0.3, 1, 0.3], scale: [0.95, 1.1, 0.95] }}
+                         transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                       >
+                          <div className="absolute inset-0 bg-purple-500/30 blur-[40px] rounded-full" />
+                          <Brain className="w-32 h-32 text-purple-400 mx-auto relative z-10" />
+                       </motion.div>
+                       <div className="font-serif italic text-white/40 text-3xl md:text-4xl mb-4">Preparando la arena mental...</div>
+                       <div className="text-xs md:text-sm uppercase tracking-[0.4em] font-black text-white/20">Esperando el inicio de la batalla de memoria</div>
                     </div>
                   )}
  
-                  {gameState?.status === "PLAYING" && (
-                     <div 
-                         className={cn(
-                            "grid gap-1.5 md:gap-2 w-full max-w-[min(95vw,85vh,700px)]",
-                            activeSkillAnim === "SHUFFLE" && "animate-bounce"
-                         )}
-                         style={{ gridTemplateColumns: `repeat(${Math.sqrt(boardToDisplay.length) || 4}, minmax(0, 1fr))` }}
-                      >
-                        {boardToDisplay.map(c => {
-                           const reveal = c.flipped || c.matched || (peekActive && boardToDisplay === myBoard);
-                           const isSpectatingTheirBoard = spectatedPlayer && boardToDisplay === spectatedPlayer.board;
-                           const isFrozen = (spectatedPlayer || myPlayer)?.frozenUntil && (spectatedPlayer || myPlayer)!.frozenUntil > Date.now();
-                           
-                           return (
-                             <div key={c.id} onClick={() => flipCard(c.id)} className={cn(
-                                "aspect-square rounded-lg cursor-pointer transition-all duration-500 relative group preserve-3d shadow-xl", 
-                                reveal ? "rotate-y-180" : "bg-white/10 hover:bg-white/20 hover:scale-105 active:scale-95",
-                                isFrozen && "opacity-50 grayscale pointer-events-none"
-                             )}>
-                                <div className={cn(
-                                   "absolute inset-0 flex items-center justify-center text-xl md:text-2xl backface-hidden rounded-lg border border-white/5", 
-                                   reveal ? "bg-purple-600 shadow-[0_0_15px_rgba(147,51,234,0.4)]" : "bg-white/5 overflow-hidden",
-                                   myPlayer?.skin === "retro" && "border-4 border-black border-double",
-                                   myPlayer?.skin === "cyberpunk" && reveal && "bg-cyan-500/80 shadow-[0_0_25px_cyan]",
-                                   myPlayer?.skin === "inferno" && !reveal && "bg-orange-950/40"
-                                )}>
-                                   <div className={cn(
-                                       reveal ? "scale-100 opacity-100" : "scale-0 opacity-0",
-                                       "transition-all duration-500 transform font-serif font-black"
-                                   )}>
-                                      {c.value}
-                                   </div>
-                                   {!reveal && (
-                                      <div className="absolute inset-0 flex items-center justify-center opacity-20 group-hover:opacity-40 transition-opacity">
-                                         {myPlayer?.skin === "retro" ? <div className="text-[10px] font-black line-through">PIXEL</div> : <Brain className="w-6 h-6" />}
-                                      </div>
-                                   )}
-                                   {!reveal && isFrozen && <div className="absolute inset-0 bg-cyan-400/30 flex items-center justify-center backdrop-blur-sm rounded-lg"><Snowflake className="w-full h-full p-2 text-cyan-200 animate-pulse" /></div>}
-                                </div>
-                                {!reveal && <div className="absolute inset-0 bg-gradient-to-tr from-white/0 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg" />}
-                             </div>
-                           );
-                        })}
-                    </div>
-                 )}
+                  {gameState?.status === "PLAYING" && (() => {
+                      const len = boardToDisplay.length || 16;
+                      const cols = Math.ceil(Math.sqrt(len));
+                      const rows = Math.ceil(len / cols);
+                      
+                      return (
+                         <div 
+                             className={cn(
+                                "grid gap-1.5 md:gap-2 mx-auto w-full max-w-5xl",
+                                activeSkillAnim === "SHUFFLE" && "animate-bounce"
+                             )}
+                             style={{ 
+                                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                                maxWidth: `min(100%, calc(55vh * ${cols} / ${rows}))`
+                             }}
+                          >
+                            {boardToDisplay.map(c => {
+                               const reveal = c.flipped || c.matched || (peekActive && boardToDisplay === myBoard);
+                               const isSpectatingTheirBoard = spectatedPlayer && boardToDisplay === spectatedPlayer.board;
+                               const targetPlayer = spectatedPlayer || myPlayer;
+                               const isFrozen = (targetPlayer?.frozenUntil || 0) > Date.now();
+                               
+                               return (
+                                 <div key={c.id} onClick={() => flipCard(c.id)} className={cn(
+                                    "aspect-square w-full rounded-xl cursor-pointer transition-all duration-300 relative group preserve-3d shadow-xl", 
+                                    reveal ? "rotate-y-180" : "bg-white/5 hover:bg-white/10 hover:scale-[1.03] active:scale-95",
+                                    isFrozen && "opacity-50 grayscale pointer-events-none"
+                                 )}>
+                                    <div className={cn(
+                                       "absolute inset-0 flex items-center justify-center text-3xl sm:text-4xl lg:text-5xl backface-hidden rounded-xl border border-white/10 overflow-hidden", 
+                                       c.matched ? "bg-green-500 shadow-[0_0_20px_#22c55e] border-green-300" :
+                                       reveal ? "bg-purple-600 shadow-[0_0_15px_rgba(147,51,234,0.4)] border-purple-400" : "bg-white/5",
+                                       myPlayer?.skin === "retro" && "border-4 border-black border-double text-black",
+                                       myPlayer?.skin === "cyberpunk" && reveal && "bg-cyan-500/80 shadow-[0_0_25px_cyan] border-cyan-300",
+                                       myPlayer?.skin === "inferno" && !reveal && "bg-orange-950/40"
+                                    )}>
+                                       <div className={cn(
+                                           reveal ? "scale-100 opacity-100" : "scale-0 opacity-0",
+                                           "transition-all duration-300 transform font-serif font-black"
+                                       )}>
+                                          {c.value}
+                                       </div>
+                                       {!reveal && (
+                                          <div className="absolute inset-0 flex items-center justify-center opacity-30 group-hover:opacity-60 transition-opacity">
+                                             {myPlayer?.skin === "retro" ? <div className="text-[10px] font-black line-through">PIXEL</div> : <Brain className="w-1/2 h-1/2" />}
+                                          </div>
+                                       )}
+                                       {(!reveal && isFrozen) ? <div className="absolute inset-0 bg-cyan-400/30 flex items-center justify-center backdrop-blur-sm"><Snowflake className="w-1/2 h-1/2 text-cyan-200 animate-pulse" /></div> : null}
+                                    </div>
+                                    {!reveal && <div className="absolute inset-0 bg-gradient-to-tr from-white/0 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl" />}
+                                 </div>
+                               );
+                            })}
+                        </div>
+                      );
+                  })()}
 
                  {gameState?.status === "ROUND_END" && (
-                    <div className="text-center py-20 p-12 glass-card border-blue-500/50">
+                    <div className="text-center py-20 p-12 glass-card border-blue-500/50 flex flex-col items-center w-full max-w-2xl">
                        <Timer className="w-16 h-16 text-blue-400 mx-auto mb-6 opacity-30" />
-                       <h2 className="text-3xl font-serif font-black mb-2 uppercase">Fin de la Ronda {gameState.currentRound}</h2>
-                       <p className="text-white/40 mb-8 font-mono">Calculando resultados y preparando la siguiente fase...</p>
-                       <button onClick={() => roomId && startRoundTransaction(roomId, gameState.currentRound + 1)} className="bg-blue-600 text-white font-black px-10 py-4 rounded-full hover:bg-blue-500 transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20">
-                          Siguiente Ronda
-                       </button>
+                       <h2 className="text-4xl font-serif font-black mb-2 uppercase tracking-tight text-glow">Fin de la Ronda {gameState.currentRound}</h2>
+                       <p className="text-white/40 mb-8 font-mono">Calculando resultados de la ronda y sumando puntos...</p>
+                       
+                       <div className="flex items-end justify-center gap-2 md:gap-4 mb-4 mt-8 h-64 w-full">
+                           {(()=>{
+                              const topPlayers = [...playersList].sort((a,b) => b.totalScore - a.totalScore).slice(0, 3);
+                              const podiumOrdered = [topPlayers[1], topPlayers[0], topPlayers[2]];
+                              
+                              return podiumOrdered.map((p, idx) => {
+                                 if (!p) return <div key={`empty-${idx}`} className="w-24 md:w-32" />;
+                                 const isFirst = idx === 1;
+                                 const isSecond = idx === 0;
+                                 const isThird = idx === 2;
+                                 const position = isFirst ? 1 : isSecond ? 2 : 3;
+                                 
+                                 return (
+                                    <div key={p.id} className="flex flex-col items-center justify-end h-full">
+                                       <motion.div 
+                                          initial={{ y: 50, opacity: 0 }}
+                                          animate={{ y: 0, opacity: 1 }}
+                                          transition={{ delay: isFirst ? 0.4 : isSecond ? 0.2 : 0 }}
+                                          className="flex flex-col items-center mb-2 z-10"
+                                       >
+                                          <div className={cn("relative p-1 rounded-full bg-gradient-to-b shadow-xl", isFirst?"from-yellow-400 to-yellow-600":isSecond?"from-slate-300 to-slate-500":"from-amber-600 to-amber-800")}>
+                                             <img src={p.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.id}`} className="w-12 h-12 md:w-16 md:h-16 rounded-full border-2 border-black" />
+                                             <div className={cn("absolute -bottom-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full flex items-center justify-center font-black text-xs md:text-sm text-black shadow-lg", isFirst?"bg-yellow-400":isSecond?"bg-slate-300":"bg-amber-600")}>
+                                                {position}
+                                             </div>
+                                          </div>
+                                          <div className="text-[9px] md:text-[10px] font-black uppercase tracking-tighter w-20 md:w-28 text-center truncate mt-3">{p.name}</div>
+                                       </motion.div>
+                                       
+                                       <motion.div 
+                                          initial={{ height: 0 }}
+                                          animate={{ height: isFirst ? '140px' : isSecond ? '100px' : '70px' }}
+                                          className={cn("w-24 md:w-32 rounded-t-xl flex flex-col items-center justify-start pt-4 border-t-2 border-x-2 shadow-2xl relative overflow-hidden", 
+                                             isFirst ? "bg-gradient-to-b from-yellow-500/30 to-yellow-900/10 border-yellow-500/50" : 
+                                             isSecond ? "bg-gradient-to-b from-slate-400/30 to-slate-800/10 border-slate-400/50" : 
+                                             "bg-gradient-to-b from-amber-600/30 to-amber-900/10 border-amber-600/50"
+                                          )}
+                                       >
+                                          <div className={cn("text-lg font-black drop-shadow-md", isFirst?"text-yellow-400":isSecond?"text-slate-300":"text-amber-500")}>
+                                             {p.totalScore} pts
+                                          </div>
+                                       </motion.div>
+                                    </div>
+                                 );
+                              });
+                           })()}
+                       </div>
+
+                       <div className="w-full max-w-md bg-white/5 rounded-2xl border border-white/10 p-4 mb-12 overflow-hidden text-left shadow-2xl">
+                          <div className="text-[10px] uppercase font-black text-purple-400 opacity-80 mb-3 px-2 flex items-center gap-2"><Trophy className="w-4 h-4" /> Clasificación Global</div>
+                          <div className="space-y-1">
+                             {[...playersList].sort((a,b) => b.totalScore - a.totalScore).map((p, i) => (
+                                <div key={p.id} className="flex justify-between items-center p-2 rounded-lg hover:bg-white/10 transition-colors text-xs space-x-2 border-b border-white/5 last:border-0 relative overflow-hidden group">
+                                   <div className="flex items-center gap-3 relative z-10 w-full">
+                                      <span className={cn("w-4 text-center font-black", i===0?"text-yellow-400":i===1?"text-slate-300":i===2?"text-amber-500":"text-white/30")}>{i+1}</span>
+                                      <img src={p.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.id}`} className="w-6 h-6 rounded-full border border-white/10" />
+                                      <span className="truncate flex-1 font-bold">{p.name}</span>
+                                      <div className="text-purple-400 font-black shrink-0">{p.totalScore} pts</div>
+                                   </div>
+                                   {i === 0 && <div className="absolute inset-0 bg-yellow-500/5 opacity-50 group-hover:opacity-100 transition-opacity" />}
+                                </div>
+                             ))}
+                          </div>
+                       </div>
+
+                       {isAdmin ? (
+                         <button onClick={() => roomId && startRoundTransaction(roomId, gameState.currentRound + 1)} className="group relative inline-flex items-center justify-center px-12 py-5 font-black text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-full overflow-hidden shadow-[0_0_40px_rgba(37,99,235,0.5)] hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(37,99,235,0.7)] active:scale-95 transition-all uppercase tracking-widest text-sm">
+                            <span className="relative z-10 flex items-center gap-2">Siguiente Ronda <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform" /></span>
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                         </button>
+                       ) : (
+                         <div className="text-[11px] font-black tracking-widest uppercase text-white/50 animate-pulse bg-white/5 px-8 py-4 rounded-xl">
+                            Esperando que el anfitrión inicie la siguiente ronda...
+                         </div>
+                       )}
                     </div>
                  )}
 
@@ -870,69 +1102,6 @@ export default function App() {
                         <button onClick={() => roomId && resetRoomTransaction(roomId)} className="mt-8 bg-white text-black font-black px-8 py-3 rounded-full hover:bg-purple-500 hover:text-white transition-all uppercase tracking-widest text-xs">Volver al Lobby</button>
                      </div>
                  )}
-               </div>
-
-               {/* Profile Right */}
-               {gameState?.status === "PLAYING" && (
-                  <div className="hidden lg:flex w-32 flex-col items-center gap-4 animate-float-delayed">
-                    {(currentMode === "1V1" || currentMode === "TEAMS") ? (
-                      currentMode === "TEAMS" ? (() => {
-                        const rivalTeam = (Object.values(gameState.teams || {}) as Team[]).find(t => t.id !== myTeam?.id);
-                        if (!rivalTeam) return null;
-                        
-                        const isRojo = rivalTeam.name.toLowerCase().includes("rojo");
-                        const teamColorClass = isRojo ? "from-pink-400 to-pink-600" : "from-blue-400 to-blue-600";
-                        const teamBgClass = isRojo ? "bg-pink-900" : "bg-blue-900";
-                        const teamTextClass = isRojo ? "text-pink-400" : "text-blue-400";
-                        const teamLabelBg = isRojo ? "bg-pink-600" : "bg-blue-600";
-
-                        return (
-                          <div className="flex flex-col items-center gap-2">
-                             <div className="relative">
-                               <div className={cn("p-0.5 bg-gradient-to-b rounded-full shadow-[0_0_15px_rgba(236,72,153,0.3)]", teamColorClass)}>
-                                 <div className={cn("w-16 h-16 rounded-full border-2 border-black flex items-center justify-center font-black text-xl", teamBgClass)}>
-                                    {rivalTeam.name[0]}
-                                 </div>
-                                 <div className={cn("absolute -bottom-2 left-1/2 -translate-x-1/2 text-[6px] px-2 py-0.5 rounded-full font-black shadow-lg uppercase text-white", teamLabelBg)}>Rival</div>
-                               </div>
-                             </div>
-                             <div className="flex -space-x-2 mt-1">
-                                {rivalTeam.playerIds.map(pid => (
-                                   <img key={pid} src={gameState.players[pid]?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${pid}`} className="w-6 h-6 rounded-full border border-black" />
-                                ))}
-                             </div>
-                             <div className={cn("text-[10px] font-black uppercase tracking-tighter text-center", teamTextClass)}>{rivalTeam.name}</div>
-                          </div>
-                        );
-                      })() : (() => {
-                        const rival = playersList.find(p => p.id !== myId);
-                        return (
-                          <div className="flex flex-col items-center gap-4">
-                            <div className="relative">
-                               <AnimatePresence>
-                                  {rival?.lastReaction && String(rival.lastReaction) !== "0" && rival.reactionTime && rival.reactionTime > Date.now() - 3000 && (
-                                     <motion.div initial={{ scale: 0, y: 0 }} animate={{ scale: 1.5, y: -40 }} exit={{ scale: 0, opacity: 0 }} className="absolute -top-12 left-1/2 -translate-x-1/2 text-4xl z-50">
-                                        {rival.lastReaction}
-                                     </motion.div>
-                                  )}
-                               </AnimatePresence>
-                               <div className={cn("relative p-0.5 bg-gradient-to-b from-pink-400 to-pink-600 rounded-full shadow-[0_0_15px_rgba(236,72,153,0.3)] transition-all duration-500", rival?.frozenUntil && rival.frozenUntil > Date.now() ? "grayscale scale-110" : "")}>
-                                 <img src={rival?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=opp`} className="w-16 h-16 rounded-full border-2 border-black" />
-                                 <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-pink-600 text-[6px] px-2 py-0.5 rounded-full font-black shadow-lg uppercase text-white">Rival</div>
-                               </div>
-                            </div>
-                            <div className="text-center">
-                               <div className="text-[10px] font-black text-pink-400 uppercase tracking-tighter">{rival?.name || "Buscando..."}</div>
-                               {rival?.frozenUntil && rival.frozenUntil > Date.now() && <div className="text-[7px] uppercase font-bold text-cyan-300 flex items-center justify-center gap-1 animate-pulse"><Snowflake className="w-2 h-2" /> Congelado</div>}
-                            </div>
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <div className="w-32" /> // Empty space for FFA balance
-                    )}
-                  </div>
-               )}
             </div>
          </div>
 
