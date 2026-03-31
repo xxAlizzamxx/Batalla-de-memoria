@@ -15,6 +15,7 @@ function cn(...inputs: ClassValue[]) {
 interface Player {
   id: string;
   name: string;
+  photoURL?: string | null;
   score: number;
   totalScore: number;
   timeSpent: number;
@@ -24,6 +25,8 @@ interface Player {
   skills: Record<string, number>;
   frozenUntil: number;
   shieldedUntil: number;
+  theme: string;
+  skin: string;
 }
 
 interface Notification {
@@ -56,14 +59,11 @@ interface GameState {
   teams?: { [teamId: string]: Team };
   mode: GameMode;
   time: number;
-  started: boolean;
   winner: string | null;
   currentRound: number;
   totalRounds: number;
   adminId: string | null;
   status: "WAITING" | "PLAYING" | "ROUND_END" | "TOURNAMENT_END";
-  theme: string;
-  skin: string;
 }
 
 // Sound Utilities
@@ -241,6 +241,7 @@ export default function App() {
   const [peekActive, setPeekActive] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [matchParticles, setMatchParticles] = useState<{ id: number, x: number, y: number }[]>([]);
+  const [activeEmotes, setActiveEmotes] = useState<{ [playerId: string]: { id: number, emote: string }[] }>({});
 
   useEffect(() => {
     const int = setInterval(() => setNow(Date.now()), 1000);
@@ -314,7 +315,7 @@ export default function App() {
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "JOIN", name, roomId: roomId || "LOBBY" }));
+      ws.send(JSON.stringify({ type: "JOIN", name, roomId: roomId || "LOBBY", photoURL: user?.photoURL || null }));
       setJoined(true);
       startBackgroundMusic();
     };
@@ -360,6 +361,21 @@ export default function App() {
         addNotification(`¡${message.by} te ha congelado!`, "error");
       } else if (message.type === "SHUFFLED_BY") {
         addNotification(`¡${message.by} mezcló tus cartas!`, "warning");
+      } else if (message.type === "EMOTE_RECEIVED") {
+        setActiveEmotes(prev => ({
+          ...prev,
+          [message.playerId]: [...(prev[message.playerId] || []), { id: Date.now() + Math.random(), emote: message.emote }]
+        }));
+        setTimeout(() => {
+          setActiveEmotes(prev => {
+            const list = prev[message.playerId] || [];
+            if (list.length === 0) return prev;
+            return {
+              ...prev,
+              [message.playerId]: list.slice(1)
+            };
+          });
+        }, 3000);
       }
     };
 
@@ -562,12 +578,47 @@ export default function App() {
   }
 
   const getCurrentSkinClass = () => {
-    switch (gameState?.skin) {
+    const skin = myId && gameState?.players[myId] ? gameState.players[myId].skin : "default";
+    switch (skin) {
       case "cyberpunk": return "theme-cyberpunk";
       case "minimalist": return "theme-minimalist";
       case "retro": return "theme-retro";
       default: return "";
     }
+  };
+
+  const renderAvatar = (player: Player | undefined, borderClass: string) => {
+    if (!player) return null;
+    const pEmotes = activeEmotes[player.id] || [];
+    return (
+      <div key={player.id} className="relative flex flex-col items-center gap-2">
+        <div className={cn("relative w-16 h-16 md:w-20 md:h-20 rounded-2xl border-4 shadow-xl flex items-center justify-center bg-white/5", borderClass, player.eliminated && "grayscale opacity-50")}>
+          {player.photoURL ? (
+            <img src={player.photoURL} alt={player.name} className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" />
+          ) : (
+            <UserIcon className="w-8 h-8 text-white/50" />
+          )}
+          {/* Emotes */}
+          <div className="absolute -top-16 left-1/2 -translate-x-1/2 flex flex-col-reverse items-center justify-start pointer-events-none h-32 w-16 overflow-visible z-50">
+            <AnimatePresence>
+              {pEmotes.map(e => (
+                <motion.div
+                  key={e.id}
+                  initial={{ opacity: 0, y: 30, scale: 0.5 }}
+                  animate={{ opacity: 1, y: 0, scale: 1.5 }}
+                  exit={{ opacity: 0, y: -30, scale: 0.8 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-2xl drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] absolute bottom-0"
+                >
+                  {e.emote}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+        <div className="text-[10px] md:text-xs font-bold truncate w-24 text-center bg-black/40 px-2 py-1 rounded-md border border-white/5 shadow-lg relative z-10">{player.name}</div>
+      </div>
+    );
   };
 
   return (
@@ -689,16 +740,16 @@ export default function App() {
               </div>
             </div>
 
-            {gameState?.status === "WAITING" && isAdmin && (
+            {gameState?.status === "WAITING" && myId && gameState.players[myId] && (
               <div className="glass-card p-6 mb-6 border-white/5 space-y-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-400 mb-2">
-                  <Sparkles className="w-4 h-4" /> Personalizar Arena
+                  <Sparkles className="w-4 h-4" /> Personaliza tus Cartas
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Temática de Cartas</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Tu Temática</label>
                   <select
-                    value={gameState.theme || "default"}
-                    onChange={(e) => socket?.send(JSON.stringify({ type: "CHANGE_THEME", theme: e.target.value }))}
+                    value={gameState.players[myId].theme || "default"}
+                    onChange={(e) => socket?.send(JSON.stringify({ type: "UPDATE_PREFS", theme: e.target.value }))}
                     className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40"
                   >
                     <option value="default" className="bg-black">😃 Emojis Clásicos</option>
@@ -709,10 +760,10 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Skin del Tablero</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Tu Skin del Tablero</label>
                   <select
-                    value={gameState.skin || "default"}
-                    onChange={(e) => socket?.send(JSON.stringify({ type: "CHANGE_SKIN", skin: e.target.value }))}
+                    value={gameState.players[myId].skin || "default"}
+                    onChange={(e) => socket?.send(JSON.stringify({ type: "UPDATE_PREFS", skin: e.target.value }))}
                     className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40"
                   >
                     <option value="default" className="bg-black">🌌 Cosmos Original</option>
@@ -999,94 +1050,136 @@ export default function App() {
                   myPlayer && myPlayer.frozenUntil > now && "grayscale blur-[2px] pointer-events-none opacity-80",
                   myPlayer && myPlayer.shieldedUntil > now && "ring-4 ring-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.3)] bg-blue-500/5"
                 )}>
-                  <div className="w-full flex flex-col items-center gap-8 relative">
+                  <div className="w-full flex justify-between items-start gap-2 md:gap-4 lg:gap-8 px-2">
+                    {/* LEFT SIDE (My Avatar / My Team / Emotes) */}
+                    <div className="flex flex-col gap-4 items-center shrink-0 w-20 md:w-28 lg:w-32 pt-4">
+                      {currentMode === "TEAMS" && myTeam ? (
+                        myTeam.playerIds.map(id => renderAvatar(gameState.players[id], "border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]"))
+                      ) : (
+                        myId && gameState?.players[myId] ? renderAvatar(gameState.players[myId], "border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]") : null
+                      )}
 
-                    {/* 1V1 Opponent Mini Board */}
-                    {currentMode === "1V1" && playersList.length === 2 && !myPlayer?.eliminated && (
-                      <div className="absolute top-0 right-0 glass-card bg-black/40 border-white/10 p-3 rounded-xl scale-75 origin-top-right shadow-2xl z-20 hidden md:block">
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2 truncate max-w-[150px]">
-                          Op. {playersList.find(p => p.id !== myId)?.name}
-                        </div>
-                        <div className="grid grid-cols-4 gap-1 w-32">
-                          {playersList.find(p => p.id !== myId)?.board.map((c) => (
-                            <div key={c.id} className={cn("aspect-square rounded-sm border", c.matched ? "bg-green-500/50 border-green-500" : c.flipped ? "bg-purple-500/50 border-purple-500" : "bg-white/5 border-white/10")} />
+                      {/* EMOTE BAR VERTICAL */}
+                      {!myPlayer?.eliminated && (
+                        <div className="glass-card p-2 rounded-2xl border-white/10 grid grid-cols-2 gap-1 md:gap-2 shadow-2xl bg-black/80 backdrop-blur-xl mt-2 w-full place-items-center">
+                          {["😂", "😡", "😭", "🎉", "🔥", "🚀", "❤️", "🥶"].map(emo => (
+                            <button
+                              key={emo}
+                              onClick={() => socket?.send(JSON.stringify({ type: "SEND_EMOTE", emote: emo }))}
+                              className="w-6 h-6 md:w-10 md:h-10 flex items-center justify-center text-sm md:text-xl hover:scale-125 transition-transform bg-white/5 rounded-full hover:bg-white/20"
+                            >
+                              {emo}
+                            </button>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
-                    {/* TEAMS Turn Indicator */}
-                    {currentMode === "TEAMS" && myTeam && !myPlayer?.eliminated && (
-                      <div className={cn("px-6 py-2 rounded-full border shadow-lg transition-all", myTeam.currentTurn === myId ? "bg-purple-500/20 border-purple-500 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.4)] scale-110" : "bg-white/5 border-white/10 text-white/40")}>
-                        <span className="text-sm font-bold uppercase tracking-widest">
-                          {myTeam.currentTurn === myId ? "¡Tu Turno!" : "Turno Compañero"}
-                        </span>
-                      </div>
-                    )}
+                    {/* CENTER BOARD */}
+                    <div className="flex-1 flex flex-col items-center gap-6 md:gap-8 relative w-full lg:max-w-4xl mt-2 z-10 overflow-hidden">
+                      {/* TEAMS Turn Indicator */}
+                      {currentMode === "TEAMS" && myTeam && !myPlayer?.eliminated && (
+                        <div className={cn("px-6 py-2 rounded-full border shadow-lg transition-all", myTeam.currentTurn === myId ? "bg-purple-500/20 border-purple-500 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.4)] scale-110" : "bg-white/5 border-white/10 text-white/40")}>
+                          <span className="text-sm font-bold uppercase tracking-widest">
+                            {myTeam.currentTurn === myId ? "¡Tu Turno!" : "Turno Compañero"}
+                          </span>
+                        </div>
+                      )}
 
-                    {myPlayer?.eliminated && spectatedPlayer && (
-                      <div className="flex items-center gap-3 glass-card bg-pink-500/10 border-pink-500/30 px-6 py-3 rounded-full animate-pulse">
-                        <Eye className="w-5 h-5 text-pink-400" />
-                        <span className="text-xs font-bold uppercase tracking-widest">Observando a: {spectatedPlayer.name}</span>
-                        <button
-                          onClick={() => {
-                            const others = playersList.filter(p => !p.eliminated && p.id !== myId);
-                            if (others.length > 0) {
-                              const randomPlayer = others[Math.floor(Math.random() * others.length)];
-                              setSpectatingId(randomPlayer.id);
-                            }
-                          }}
-                          className="ml-2 p-1.5 hover:bg-white/10 rounded-full transition-colors"
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-
-                    <div className={cn(
-                      "grid gap-3 md:gap-4 w-full mx-auto",
-                      boardToDisplay.length <= 16 ? "grid-cols-4 max-w-md" :
-                        boardToDisplay.length <= 24 ? "grid-cols-6 max-w-2xl" : "grid-cols-8 max-w-4xl"
-                    )}>
-                      {boardToDisplay.map((card) => {
-                        const reveal = card.flipped || card.matched || (peekActive && boardToDisplay === myBoard);
-                        return (
-                          <motion.div
-                            key={card.id}
-                            initial={false}
-                            animate={{ rotateY: reveal ? 180 : 0 }}
-                            transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                            whileHover={!reveal && !myPlayer?.eliminated ? { scale: 1.05, y: -4 } : {}}
-                            whileTap={!reveal && !myPlayer?.eliminated ? { scale: 0.95 } : {}}
-                            onClick={() => !reveal && !myPlayer?.eliminated && flipCard(card.id)}
-                            className="aspect-square cursor-pointer relative preserve-3d"
+                      {myPlayer?.eliminated && spectatedPlayer && (
+                        <div className="flex items-center gap-3 glass-card bg-pink-500/10 border-pink-500/30 px-6 py-3 rounded-full animate-pulse">
+                          <Eye className="w-5 h-5 text-pink-400" />
+                          <span className="text-xs font-bold uppercase tracking-widest">Observando a: {spectatedPlayer.name}</span>
+                          <button
+                            onClick={() => {
+                              const others = playersList.filter(p => !p.eliminated && p.id !== myId);
+                              if (others.length > 0) {
+                                const randomPlayer = others[Math.floor(Math.random() * others.length)];
+                                setSpectatingId(randomPlayer.id);
+                              }
+                            }}
+                            className="ml-2 p-1.5 hover:bg-white/10 rounded-full transition-colors"
                           >
-                            {/* Front of Card (Hidden) */}
-                            <div className={cn(
-                              "absolute inset-0 rounded-2xl glass-card bg-white/5 border-white/10 flex items-center justify-center backface-hidden shadow-lg",
-                              !reveal && !myPlayer?.eliminated && "hover:border-purple-500/50 hover:bg-purple-500/5"
-                            )}>
-                              <div className="w-8 h-8 rounded-full border-2 border-white/5 flex items-center justify-center">
-                                <Brain className="w-4 h-4 text-white/10" />
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className={cn(
+                        "grid w-full mx-auto justify-center",
+                        boardToDisplay.length <= 16 ? "grid-cols-4 max-w-md gap-3 md:gap-4" :
+                          boardToDisplay.length <= 24 ? "grid-cols-6 max-w-2xl gap-2 md:gap-4" : "grid-cols-6 sm:grid-cols-8 max-w-3xl gap-1 md:gap-2 px-1"
+                      )}>
+                        {boardToDisplay.map((card) => {
+                          const reveal = card.flipped || card.matched || (peekActive && boardToDisplay === myBoard);
+                          return (
+                            <motion.div
+                              key={card.id}
+                              initial={false}
+                              animate={{ rotateY: reveal ? 180 : 0 }}
+                              transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                              whileHover={!reveal && !myPlayer?.eliminated ? { scale: 1.05, y: -4 } : {}}
+                              whileTap={!reveal && !myPlayer?.eliminated ? { scale: 0.95 } : {}}
+                              onClick={() => !reveal && !myPlayer?.eliminated && flipCard(card.id)}
+                              className={cn("aspect-square cursor-pointer relative preserve-3d", 
+                                boardToDisplay.length > 24 ? "w-9 h-9 sm:w-11 sm:h-11 md:w-14 md:h-14 lg:w-16 lg:h-16" : "w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20"
+                              )}
+                            >
+                              {/* Front of Card (Hidden) */}
+                              <div className={cn(
+                                "absolute inset-0 rounded-xl md:rounded-2xl glass-card bg-white/5 border-white/10 flex items-center justify-center backface-hidden shadow-lg",
+                                !reveal && !myPlayer?.eliminated && "hover:border-purple-500/50 hover:bg-purple-500/5"
+                              )}>
+                                <div className={cn("rounded-full border border-white/5 flex items-center justify-center", 
+                                  boardToDisplay.length > 24 ? "w-4 h-4 md:w-6 md:h-6" : "w-6 h-6 md:w-8 md:h-8 border-2"
+                                )}>
+                                  <Brain className={cn("text-white/10", boardToDisplay.length > 24 ? "w-2 h-2 md:w-3 md:h-3" : "w-3 h-3 md:w-4 md:h-4")} />
+                                </div>
+                              </div>
+
+                              {/* Back of Card (Revealed) */}
+                              <div className={cn(
+                                "absolute inset-0 rounded-xl md:rounded-2xl border-2 border-purple-500 bg-gradient-to-br from-purple-600/30 to-pink-600/30 flex items-center justify-center rotate-y-180 backface-hidden shadow-xl",
+                                card.matched && "border-green-500 from-green-500/30 to-emerald-500/30"
+                              )}>
+                                <span className={cn(
+                                  "text-white text-glow",
+                                  boardToDisplay.length > 24 ? "text-base sm:text-lg md:text-2xl lg:text-3xl" :
+                                    boardToDisplay.length > 16 ? "text-xl md:text-2xl" : "text-2xl md:text-4xl"
+                                )}>
+                                  {card.value}
+                                </span>
+                              </div>
+                            </motion.div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* RIGHT SIDE (Opponents in 1v1 / Opposing Team) / FFA Empty space for balance */}
+                    <div className="flex flex-col gap-6 items-center shrink-0 w-20 md:w-28 lg:w-32 pt-4">
+                      {currentMode === "TEAMS" ? (
+                        ((Object.values(gameState?.teams || {}) as Team[]).find(t => t.id !== myTeam?.id)?.playerIds || [])
+                          .map(id => renderAvatar(gameState?.players[id], "border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]"))
+                      ) : currentMode === "1V1" ? (
+                        <>
+                          {playersList.filter(p => p.id !== myId).map(p => renderAvatar(p, "border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]"))}
+                          
+                          {/* 1V1 Opponent Mini Board moved under their avatar */}
+                          {playersList.length === 2 && !myPlayer?.eliminated && (
+                            <div className="glass-card bg-black/40 border-white/10 p-2 rounded-xl shadow-2xl hidden md:block mt-4">
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2 truncate max-w-[100px] text-center">
+                                Tablero Op.
+                              </div>
+                              <div className="grid grid-cols-4 gap-1 w-24">
+                                {playersList.find(p => p.id !== myId)?.board.map((c) => (
+                                  <div key={c.id} className={cn("aspect-square rounded-sm border", c.matched ? "bg-green-500/50 border-green-500" : c.flipped ? "bg-purple-500/50 border-purple-500" : "bg-white/5 border-white/10")} />
+                                ))}
                               </div>
                             </div>
-
-                            {/* Back of Card (Revealed) */}
-                            <div className={cn(
-                              "absolute inset-0 rounded-2xl border-2 border-purple-500 bg-gradient-to-br from-purple-600/30 to-pink-600/30 flex items-center justify-center rotate-y-180 backface-hidden shadow-xl",
-                              card.matched && "border-green-500 from-green-500/30 to-emerald-500/30"
-                            )}>
-                              <span className={cn(
-                                "text-white text-glow",
-                                boardToDisplay.length > 24 ? "text-xl md:text-2xl" :
-                                  boardToDisplay.length > 16 ? "text-2xl md:text-3xl" : "text-4xl md:text-6xl"
-                              )}>
-                                {card.value}
-                              </span>
-                            </div>
-                          </motion.div>
-                        )
-                      })}
+                          )}
+                        </>
+                      ) : null}
                     </div>
                   </div>
                 </div>

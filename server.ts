@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 interface Player {
   id: string;
   name: string;
+  photoURL?: string | null;
   score: number; // Round score
   totalScore: number; // Cumulative score
   timeSpent: number;
@@ -20,6 +21,8 @@ interface Player {
   skills: Record<string, number>;
   frozenUntil: number;
   shieldedUntil: number;
+  theme: string;
+  skin: string;
 }
 
 interface Card {
@@ -52,8 +55,6 @@ interface GameState {
   totalRounds: number;
   adminId: string | null;
   status: "WAITING" | "PLAYING" | "ROUND_END" | "TOURNAMENT_END";
-  theme: string;
-  skin: string;
 }
 
 interface Room {
@@ -123,7 +124,8 @@ function startRound(roomId: string, round: number) {
     // Si el modo es equipos, gestionamos los equipos
     Object.values(room.gameState.teams).forEach(t => {
       t.score = 0;
-      t.board = generateBoard(round, room.gameState.theme);
+      const firstPlayerTheme = room.gameState.players[t.playerIds[0]]?.theme || "default";
+      t.board = generateBoard(round, firstPlayerTheme);
       // Reset turn to first player
       t.currentTurn = t.playerIds[0]; // Establecer el primer jugador como el que tiene el turno
     });
@@ -144,7 +146,7 @@ function startRound(roomId: string, round: number) {
         p.board = [];
         gsp.board = [];
       } else {
-        p.board = generateBoard(round, room.gameState.theme);
+        p.board = generateBoard(round, gsp.theme);
         gsp.board = p.board;
         gsp.skills.peek = (gsp.skills.peek || 0) + 1; // Si el jugador no está eliminado, aumenta la habilidad
       }
@@ -282,6 +284,7 @@ async function startServer() {
       switch (message.type) {
         case "JOIN":
           const roomId = message.roomId || "LOBBY";
+          const photoURL = message.photoURL || null;
           currentRoomId = roomId;
 
           if (!rooms[roomId]) {
@@ -297,9 +300,7 @@ async function startServer() {
                 currentRound: 1,
                 totalRounds: 3,
                 adminId: id,
-                status: "WAITING",
-                theme: "default",
-                skin: "default"
+                status: "WAITING"
               },
               timerInterval: null
             };
@@ -310,6 +311,7 @@ async function startServer() {
           room.players[id] = {
             id,
             name: message.name,
+            photoURL,
             score: 0,
             totalScore: 0,
             timeSpent: 0,
@@ -319,11 +321,14 @@ async function startServer() {
             combo: 0,
             skills: { peek: 0, freeze: 0, shield: 0, shuffle: 0 },
             frozenUntil: 0,
-            shieldedUntil: 0
+            shieldedUntil: 0,
+            theme: "default",
+            skin: "default"
           };
           room.gameState.players[id] = {
             id,
             name: message.name,
+            photoURL,
             score: 0,
             totalScore: 0,
             timeSpent: 0,
@@ -332,7 +337,9 @@ async function startServer() {
             combo: 0,
             skills: { peek: 0, freeze: 0, shield: 0, shuffle: 0 },
             frozenUntil: 0,
-            shieldedUntil: 0
+            shieldedUntil: 0,
+            theme: "default",
+            skin: "default"
           };
 
           ws.send(JSON.stringify({ type: "JOIN_SUCCESS", id, roomId }));
@@ -378,21 +385,17 @@ async function startServer() {
           }
           break;
 
-        case "CHANGE_THEME":
+        case "UPDATE_PREFS":
           if (!currentRoomId || !rooms[currentRoomId]) return;
-          const themeRoom = rooms[currentRoomId];
-          if (themeRoom.gameState.adminId === id) {
-            themeRoom.gameState.theme = message.theme;
-            broadcast(currentRoomId, { type: "GAME_STATE", state: themeRoom.gameState });
-          }
-          break;
-
-        case "CHANGE_SKIN":
-          if (!currentRoomId || !rooms[currentRoomId]) return;
-          const skinRoom = rooms[currentRoomId];
-          if (skinRoom.gameState.adminId === id) {
-            skinRoom.gameState.skin = message.skin;
-            broadcast(currentRoomId, { type: "GAME_STATE", state: skinRoom.gameState });
+          const prefsRoom = rooms[currentRoomId];
+          const prefsP = prefsRoom.players[id];
+          const prefsGsp = prefsRoom.gameState.players[id];
+          if (prefsP && prefsGsp) {
+            prefsP.theme = message.theme || prefsP.theme;
+            prefsP.skin = message.skin || prefsP.skin;
+            prefsGsp.theme = message.theme || prefsGsp.theme;
+            prefsGsp.skin = message.skin || prefsGsp.skin;
+            broadcast(currentRoomId, { type: "GAME_STATE", state: prefsRoom.gameState });
           }
           break;
 
@@ -515,6 +518,13 @@ async function startServer() {
             }
           }
           broadcast(currentRoomId, { type: "GAME_STATE", state: skillRoom.gameState });
+          break;
+
+        case "SEND_EMOTE":
+          if (!currentRoomId || !rooms[currentRoomId]) return;
+          const emoteRoom = rooms[currentRoomId];
+          if (!emoteRoom.gameState.players[id]) return;
+          broadcast(currentRoomId, { type: "EMOTE_RECEIVED", playerId: id, emote: message.emote });
           break;
       }
     });
