@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Brain, Users, Trophy, Timer, Play, UserPlus, LogOut, Shield, Zap, ArrowRight, Skull, LogIn, Eye, RefreshCw, Sparkles, Share2, Flame, Snowflake, Shuffle } from "lucide-react";
+import { Brain, Users, Trophy, Timer, Play, UserPlus, LogOut, Shield, Zap, ArrowRight, Skull, LogIn, Eye, RefreshCw, Sparkles, Share2, Flame, Snowflake, Shuffle,Swords, User as UserIcon } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import Confetti from "react-confetti";
@@ -39,8 +39,22 @@ interface Card {
   matched: boolean;
 }
 
+type GameMode = "FFA" | "1V1" | "TEAMS";
+
+interface Team {
+  id: string;
+  name: string;
+  playerIds: string[];
+  score: number;
+  totalScore: number;
+  board: Card[];
+  currentTurn: string;
+}
+
 interface GameState {
   players: { [id: string]: Player };
+  teams?: { [teamId: string]: Team };
+  mode: GameMode;
   time: number;
   started: boolean;
   winner: string | null;
@@ -240,6 +254,7 @@ export default function App() {
       setNotifications(prev => prev.filter(n => n.id !== id));
     }, 3000);
   };
+  const [selectedMode, setSelectedMode] = useState<GameMode>("FFA");
 
   useEffect(() => {
     // Check for room ID in URL
@@ -352,7 +367,7 @@ export default function App() {
   };
 
   const startGame = () => {
-    socket?.send(JSON.stringify({ type: "START_GAME" }));
+    socket?.send(JSON.stringify({ type: "START_GAME", mode: selectedMode }));
   };
 
   const nextRound = () => {
@@ -397,11 +412,15 @@ export default function App() {
   const activePlayers = playersList.filter(p => !p.eliminated);
   const isAdmin = gameState?.adminId === myId;
   const myPlayer = myId ? gameState?.players[myId] : null;
-  const myBoard = myPlayer?.board || [];
+  const myTeam = myId && gameState?.teams ? (Object.values(gameState.teams) as Team[]).find(t => t.playerIds.includes(myId)) : null;
+  
+  const currentMode = gameState?.mode || "FFA";
+  const myBoard = currentMode === "TEAMS" && myTeam ? myTeam.board : (myPlayer?.board || []);
   const myMatchedPairs = Math.floor((myBoard.filter(c => c.matched).length || 0) / 2);
 
   const spectatedPlayer = spectatingId ? gameState?.players[spectatingId] : null;
-  const boardToDisplay = spectatedPlayer ? spectatedPlayer.board : myBoard;
+  const spectatedTeam = spectatingId && gameState?.teams ? (Object.values(gameState.teams) as Team[]).find(t => t.playerIds.includes(spectatingId)) : null;
+  const boardToDisplay = spectatedPlayer ? (currentMode === "TEAMS" && spectatedTeam ? spectatedTeam.board : spectatedPlayer.board) : myBoard;
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -627,26 +646,46 @@ export default function App() {
             <div className="glass-card p-6 border-white/5">
               <div className="flex items-center gap-2 mb-6 text-xs font-bold uppercase tracking-widest text-white/40">
                 <Users className="w-4 h-4" />
-                Jugadores en Arena
+                {currentMode === "TEAMS" && gameState?.teams ? "Equipos" : "Jugadores en Arena"}
               </div>
               
               <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-                {playersList.sort((a, b) => b.totalScore - a.totalScore).map(p => (
-                  <div key={p.id} className={cn(
-                    "p-3 rounded-xl border transition-all flex justify-between items-center",
-                    p.eliminated ? "border-white/5 opacity-40 bg-white/2" : "border-white/10 bg-white/5",
-                    p.id === myId && "border-purple-500/50 bg-purple-500/10"
-                  )}>
-                    <div className="flex items-center gap-3 min-w-0">
-                      {p.id === gameState?.adminId && <Shield className="w-3 h-3 text-yellow-500" />}
-                      {p.eliminated ? <Skull className="w-3 h-3 text-white/30" /> : (p.board.every(c => c.matched) && p.board.length > 0 ? <Trophy className="w-3 h-3 text-yellow-500" /> : <Sparkles className="w-3 h-3 text-purple-400 animate-pulse" />)}
-                      <span className="text-sm font-medium truncate">{p.name} {p.id === myId && "(Tú)"}</span>
+                {currentMode === "TEAMS" && gameState?.teams ? (
+                  (Object.values(gameState.teams) as Team[]).sort((a, b) => b.totalScore - a.totalScore).map(t => (
+                    <div key={t.id} className={cn(
+                      "p-3 rounded-xl border transition-all",
+                      myTeam?.id === t.id ? "border-purple-500/50 bg-purple-500/10" : "border-white/10 bg-white/5"
+                    )}>
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2 text-sm font-bold text-white">
+                          <Users className="w-4 h-4 text-purple-400" />
+                          {t.name}
+                        </div>
+                        <div className="text-xs font-black text-purple-400">{t.totalScore} pts</div>
+                      </div>
+                      <div className="text-[10px] text-white/40 uppercase tracking-widest">
+                        {t.playerIds.map(id => gameState.players[id]?.name + (myId === id ? " (Tú)" : "")).join(" & ")}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs font-bold">{p.totalScore}</div>
+                  ))
+                ) : (
+                  playersList.sort((a, b) => b.totalScore - a.totalScore).map(p => (
+                    <div key={p.id} className={cn(
+                      "p-3 rounded-xl border transition-all flex justify-between items-center",
+                      p.eliminated ? "border-white/5 opacity-40 bg-white/2" : "border-white/10 bg-white/5",
+                      p.id === myId && "border-purple-500/50 bg-purple-500/10"
+                    )}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {p.id === gameState?.adminId && <Shield className="w-3 h-3 text-yellow-500" />}
+                        {p.eliminated ? <Skull className="w-3 h-3 text-white/30" /> : (p.board.every(c => c.matched) && p.board.length > 0 ? <Trophy className="w-3 h-3 text-yellow-500" /> : <Sparkles className="w-3 h-3 text-purple-400 animate-pulse" />)}
+                        <span className="text-sm font-medium truncate">{p.name} {p.id === myId && "(Tú)"}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs font-bold">{p.totalScore}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
@@ -655,7 +694,6 @@ export default function App() {
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-400 mb-2">
                   <Sparkles className="w-4 h-4" /> Personalizar Arena
                 </div>
-                
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Temática de Cartas</label>
                   <select 
@@ -687,13 +725,67 @@ export default function App() {
             )}
 
             {gameState?.status === "WAITING" && isAdmin && (
-              <button
-                onClick={startGame}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-5 rounded-2xl hover:shadow-xl hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3"
-              >
-                <Play className="w-6 h-6" />
-                Iniciar Batalla
-              </button>
+              <div className="space-y-4">
+                <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Modo de Juego</div>
+                <div className="grid grid-cols-1 gap-3">
+                  {/* Modos de juego */}
+                  <button
+                    onClick={() => setSelectedMode("FFA")}
+                    className={cn("p-4 rounded-xl border transition-all flex items-center gap-3", selectedMode === "FFA" ? "bg-purple-500/20 border-purple-500 shadow-lg shadow-purple-500/20" : "bg-white/5 border-white/10 hover:bg-white/10")}
+                  >
+                    <div className={cn("p-2 rounded-lg", selectedMode === "FFA" ? "bg-purple-500 text-white" : "bg-white/10 text-white/50")}>
+                      <Swords className="w-5 h-5" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <div className="font-bold text-sm">Todos vs Todos</div>
+                      <div className="text-[10px] text-white/40 leading-tight">Clásico. Puntos ind.</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedMode("1V1")}
+                    className={cn("p-4 rounded-xl border transition-all flex items-center gap-3", selectedMode === "1V1" ? "bg-blue-500/20 border-blue-500 shadow-lg shadow-blue-500/20" : "bg-white/5 border-white/10 hover:bg-white/10")}
+                  >
+                    <div className={cn("p-2 rounded-lg flex items-center gap-1", selectedMode === "1V1" ? "bg-blue-500 text-white" : "bg-white/10 text-white/50")}>
+                      <UserIcon className="w-4 h-4" />
+                      <span className="text-[10px] font-black italic">VS</span>
+                      <UserIcon className="w-4 h-4" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <div className="font-bold text-sm">1 vs 1</div>
+                      <div className="text-[10px] text-white/40 leading-tight">Duelo cara a cara (2 jug.)</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedMode("TEAMS")}
+                    className={cn("p-4 rounded-xl border transition-all flex items-center gap-3", selectedMode === "TEAMS" ? "bg-pink-500/20 border-pink-500 shadow-lg shadow-pink-500/20" : "bg-white/5 border-white/10 hover:bg-white/10")}
+                  >
+                    <div className={cn("p-2 rounded-lg flex items-center gap-1", selectedMode === "TEAMS" ? "bg-pink-500 text-white" : "bg-white/10 text-white/50")}>
+                      <Users className="w-4 h-4" />
+                      <span className="text-[10px] font-black italic">VS</span>
+                      <Users className="w-4 h-4" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <div className="font-bold text-sm">Por Equipos</div>
+                      <div className="text-[10px] text-white/40 leading-tight">Pares al azar (4 jug.)</div>
+                    </div>
+                  </button>
+                </div>
+
+                <button
+                  onClick={startGame}
+                  disabled={
+                    (selectedMode === "1V1" && playersList.length !== 2) || 
+                    (selectedMode === "TEAMS" && playersList.length !== 4) ||
+                    (selectedMode === "FFA" && playersList.length < 1)
+                  }
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-5 rounded-2xl hover:shadow-xl hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+                >
+                  <Play className="w-6 h-6" />
+                  Iniciar Batalla
+                </button>
+              </div>
             )}
 
             {gameState?.status === "WAITING" && !isAdmin && (
@@ -907,6 +999,31 @@ export default function App() {
                   myPlayer && myPlayer.frozenUntil > now && "grayscale blur-[2px] pointer-events-none opacity-80",
                   myPlayer && myPlayer.shieldedUntil > now && "ring-4 ring-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.3)] bg-blue-500/5"
                 )}>
+                <div className="w-full flex flex-col items-center gap-8 relative">
+                  
+                  {/* 1V1 Opponent Mini Board */}
+                  {currentMode === "1V1" && playersList.length === 2 && !myPlayer?.eliminated && (
+                    <div className="absolute top-0 right-0 glass-card bg-black/40 border-white/10 p-3 rounded-xl scale-75 origin-top-right shadow-2xl z-20 hidden md:block">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2 truncate max-w-[150px]">
+                        Op. {playersList.find(p => p.id !== myId)?.name}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 w-32">
+                        {playersList.find(p => p.id !== myId)?.board.map((c) => (
+                          <div key={c.id} className={cn("aspect-square rounded-sm border", c.matched ? "bg-green-500/50 border-green-500" : c.flipped ? "bg-purple-500/50 border-purple-500" : "bg-white/5 border-white/10")} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TEAMS Turn Indicator */}
+                  {currentMode === "TEAMS" && myTeam && !myPlayer?.eliminated && (
+                    <div className={cn("px-6 py-2 rounded-full border shadow-lg transition-all", myTeam.currentTurn === myId ? "bg-purple-500/20 border-purple-500 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.4)] scale-110" : "bg-white/5 border-white/10 text-white/40")}>
+                      <span className="text-sm font-bold uppercase tracking-widest">
+                        {myTeam.currentTurn === myId ? "¡Tu Turno!" : "Turno Compañero"}
+                      </span>
+                    </div>
+                  )}
+
                   {myPlayer?.eliminated && spectatedPlayer && (
                     <div className="flex items-center gap-3 glass-card bg-pink-500/10 border-pink-500/30 px-6 py-3 rounded-full animate-pulse">
                       <Eye className="w-5 h-5 text-pink-400" />

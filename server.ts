@@ -29,8 +29,22 @@ interface Card {
   matched: boolean;
 }
 
+type GameMode = "FFA" | "1V1" | "TEAMS";
+
+interface Team {
+  id: string;
+  name: string;
+  playerIds: string[];
+  score: number;
+  totalScore: number;
+  board: Card[];
+  currentTurn: string;
+}
+
 interface GameState {
   players: { [id: string]: Omit<Player, "ws"> };
+  teams?: { [teamId: string]: Team };
+  mode: GameMode;
   time: number;
   started: boolean;
   winner: string | null;
@@ -104,44 +118,95 @@ function startRound(roomId: string, round: number) {
   room.gameState.winner = null;
   room.gameState.time = round === 1 ? 50 : round === 2 ? 90 : 120;
 
-  // Reset round scores and generate boards for each player
-  Object.keys(room.players).forEach(id => {
+// Reset round scores and generate boards for each player or team
+if (room.gameState.mode === "TEAMS" && room.gameState.teams) {
+    // Si el modo es equipos, gestionamos los equipos
+    Object.values(room.gameState.teams).forEach(t => {
+        t.score = 0;
+        t.board = generateBoard(round, room.gameState.theme);
+        // Reset turn to first player
+        t.currentTurn = t.playerIds[0]; // Establecer el primer jugador como el que tiene el turno
+    });
+}
+
+// Reset player time spent for tracking and individual boards
+Object.keys(room.players).forEach(id => {
     const p = room.players[id];
     const gsp = room.gameState.players[id];
     if (gsp) {
-      gsp.timeSpent = 0;
-      gsp.combo = 0;
-      if (!gsp.eliminated) {
-        p.board = generateBoard(round, room.gameState.theme);
-        gsp.board = p.board;
-        gsp.skills.peek = (gsp.skills.peek || 0) + 1;
-      } else {
-        p.board = [];
+// Reset timeSpent, combo, and score
+gsp.timeSpent = 0;
+gsp.combo = 0;
+gsp.score = 0;
+
+// Handle eliminated players and reset their board
+if (gsp.eliminated) {
+    p.board = generateBoard(round, room.gameState.theme);
+    gsp.board = p.board;
+    gsp.skills.peek = (gsp.skills.peek || 0) + 1;
+} else {
+    // Reset board if not eliminated
+    p.board = [];
+    gsp.board = [];
+}
         gsp.board = [];
-      }
+
+        // Si el jugador está eliminado, asignar un tablero vacío
+        if (gsp.eliminated) {
+            p.board = [];
+            gsp.board = [];
+        } else {
+            // Si no está eliminado, asignar un nuevo tablero
+            p.board = generateBoard(round, room.gameState.theme);
+            gsp.board = p.board;
+            gsp.skills.peek = (gsp.skills.peek || 0) + 1; // Si el jugador no está eliminado, aumenta la habilidad
+        }
     }
-  });
+});
+      }
+    });
+  }
 
   room.timerInterval = setInterval(() => {
     room.gameState.time--;
     
-    // Increment timeSpent for active players who haven't finished their board
-    Object.keys(room.players).forEach(id => {
-      const gsp = room.gameState.players[id];
-      if (gsp && !gsp.eliminated && !gsp.board.every(c => c.matched)) {
-        gsp.timeSpent += 1;
-      }
-    });
+    if (room.gameState.mode === "TEAMS" && room.gameState.teams) {
+      Object.keys(room.players).forEach(id => {
+        const gsp = room.gameState.players[id];
+        const team = Object.values(room.gameState.teams!).find(t => t.playerIds.includes(id));
+        if (gsp && team && !team.board.every(c => c.matched)) {
+          gsp.timeSpent += 1;
+        }
+      });
 
-    if (room.gameState.time <= 0) {
-      endRound(roomId);
-    } else {
-      // Check if all active players have finished their boards
-      const activePlayers = Object.values(room.gameState.players).filter(p => !p.eliminated);
-      if (activePlayers.length > 0 && activePlayers.every(p => p.board.every(c => c.matched))) {
+      if (room.gameState.time <= 0) {
         endRound(roomId);
+      } else {
+        const activeTeams = Object.values(room.gameState.teams);
+        if (activeTeams.length > 0 && activeTeams.every(t => t.board.every(c => c.matched))) {
+          endRound(roomId);
+        }
+      }
+    } else {
+      // Increment timeSpent for active players who haven't finished their board
+      Object.keys(room.players).forEach(id => {
+        const gsp = room.gameState.players[id];
+        if (gsp && !gsp.eliminated && !gsp.board.every(c => c.matched)) {
+          gsp.timeSpent += 1;
+        }
+      });
+
+      if (room.gameState.time <= 0) {
+        endRound(roomId);
+      } else {
+        // Check if all active players have finished their boards
+        const activePlayers = Object.values(room.gameState.players).filter(p => !p.eliminated);
+        if (activePlayers.length > 0 && activePlayers.every(p => p.board.every(c => c.matched))) {
+          endRound(roomId);
+        }
       }
     }
+    
     broadcast(roomId, { type: "GAME_STATE", state: room.gameState });
   }, 1000);
 
@@ -154,31 +219,45 @@ function endRound(roomId: string) {
   if (room.timerInterval) clearInterval(room.timerInterval);
   room.gameState.status = "ROUND_END";
   
-  // Update total scores
-  Object.values(room.gameState.players).forEach(p => {
-    p.totalScore += p.score;
-  });
-
-  const activePlayers = Object.values(room.gameState.players)
-    .filter(p => !p.eliminated)
-    .sort((a, b) => b.score - a.score || a.timeSpent - b.timeSpent);
-
-  // Eliminate bottom 2 if more than 2 active players and not final round
-  if (activePlayers.length > 2 && room.gameState.currentRound < room.gameState.totalRounds) {
-    const toEliminate = activePlayers.slice(-2);
-    toEliminate.forEach(p => {
-      p.eliminated = true;
+  if (room.gameState.mode === "TEAMS" && room.gameState.teams) {
+    Object.values(room.gameState.teams).forEach(t => {
+      t.totalScore += t.score;
     });
-    broadcast(roomId, { type: "ELIMINATION", eliminatedIds: toEliminate.map(p => p.id) });
-  }
 
-  // Check for tournament end
-  if (room.gameState.currentRound >= room.gameState.totalRounds) {
-    room.gameState.status = "TOURNAMENT_END";
-    room.gameState.started = false;
-    const sortedByTotal = Object.values(room.gameState.players).sort((a, b) => b.totalScore - a.totalScore);
-    room.gameState.winner = sortedByTotal[0] ? sortedByTotal[0].name : "No one";
-    broadcast(roomId, { type: "GAME_OVER", winner: room.gameState.winner });
+    if (room.gameState.currentRound >= room.gameState.totalRounds) {
+      room.gameState.status = "TOURNAMENT_END";
+      room.gameState.started = false;
+      const sortedTeams = Object.values(room.gameState.teams).sort((a, b) => b.totalScore - a.totalScore);
+      room.gameState.winner = sortedTeams[0] ? sortedTeams[0].name : "Nadie";
+      broadcast(roomId, { type: "GAME_OVER", winner: room.gameState.winner });
+    }
+  } else {
+    // Update total scores
+    Object.values(room.gameState.players).forEach(p => {
+      p.totalScore += p.score;
+    });
+
+    const activePlayers = Object.values(room.gameState.players)
+      .filter(p => !p.eliminated)
+      .sort((a, b) => b.score - a.score || a.timeSpent - b.timeSpent);
+
+    // Eliminate bottom 2 if more than 2 active players and not final round
+    if (activePlayers.length > 2 && room.gameState.currentRound < room.gameState.totalRounds) {
+      const toEliminate = activePlayers.slice(-2);
+      toEliminate.forEach(p => {
+        p.eliminated = true;
+      });
+      broadcast(roomId, { type: "ELIMINATION", eliminatedIds: toEliminate.map(p => p.id) });
+    }
+
+    // Check for tournament end
+    if (room.gameState.currentRound >= room.gameState.totalRounds) {
+      room.gameState.status = "TOURNAMENT_END";
+      room.gameState.started = false;
+      const sortedByTotal = Object.values(room.gameState.players).sort((a, b) => b.totalScore - a.totalScore);
+      room.gameState.winner = sortedByTotal[0] ? sortedByTotal[0].name : "Nadie";
+      broadcast(roomId, { type: "GAME_OVER", winner: room.gameState.winner });
+    }
   }
 
   broadcast(roomId, { type: "GAME_STATE", state: room.gameState });
@@ -226,6 +305,7 @@ async function startServer() {
               players: {},
               gameState: {
                 players: {},
+                mode: "FFA",
                 time: 50,
                 started: false,
                 winner: null,
@@ -278,11 +358,29 @@ async function startServer() {
           if (!currentRoomId || !rooms[currentRoomId]) return;
           const startRoom = rooms[currentRoomId];
           if (startRoom.gameState.adminId !== id) return;
+          
+          startRoom.gameState.mode = message.mode || "FFA";
+          
+          if (startRoom.gameState.mode === "1V1" && Object.keys(startRoom.players).length !== 2) return;
+          if (startRoom.gameState.mode === "TEAMS" && Object.keys(startRoom.players).length !== 4) return;
+          
+          if (startRoom.gameState.mode === "TEAMS") {
+             const pIds = Object.keys(startRoom.players).sort(() => Math.random() - 0.5);
+             startRoom.gameState.teams = {
+                "TEAM_1": { id: "TEAM_1", name: "Equipo Rojo", playerIds: [pIds[0], pIds[1]], score: 0, totalScore: 0, board: [], currentTurn: pIds[0] },
+                "TEAM_2": { id: "TEAM_2", name: "Equipo Azul", playerIds: [pIds[2], pIds[3]], score: 0, totalScore: 0, board: [], currentTurn: pIds[2] }
+             }
+          }
+
           // Reset tournament
           Object.values(startRoom.gameState.players).forEach(p => {
             p.totalScore = 0;
             p.eliminated = false;
           });
+          if (startRoom.gameState.teams) {
+            Object.values(startRoom.gameState.teams).forEach(t => { t.totalScore = 0; });
+          }
+
           startRound(currentRoomId, 1);
           break;
 
@@ -316,52 +414,71 @@ async function startServer() {
         case "FLIP_CARD":
           if (!currentRoomId || !rooms[currentRoomId]) return;
           const flipRoom = rooms[currentRoomId];
+          const mode = flipRoom.gameState.mode;
+          let activeBoard: Card[] = [];
+          let currentTeam: Team | undefined;
+
           const gsp = flipRoom.gameState.players[id];
           if (!flipRoom.gameState.started || !gsp || gsp.eliminated || flipRoom.gameState.status !== "PLAYING") return;
           if (gsp.frozenUntil > Date.now()) return;
           
-          const playerBoard = gsp.board;
-          const currentlyFlipped = playerBoard.filter(c => c.flipped && !c.matched);
+          if (mode === "TEAMS" && flipRoom.gameState.teams) {
+             currentTeam = Object.values(flipRoom.gameState.teams).find(t => t.playerIds.includes(id));
+             if (!currentTeam || currentTeam.currentTurn !== id) return;
+             activeBoard = currentTeam.board;
+          } else {
+             activeBoard = gsp.board;
+          }
+
+          const currentlyFlipped = activeBoard.filter(c => c.flipped && !c.matched);
           if (currentlyFlipped.length >= 2) return;
 
-          const card = playerBoard[message.cardId];
+          const card = activeBoard[message.cardId];
           if (!card || card.flipped || card.matched) return;
 
           card.flipped = true;
-          const flippedCards = playerBoard.filter(c => c.flipped && !c.matched);
+          const flippedCards = activeBoard.filter(c => c.flipped && !c.matched);
 
           if (flippedCards.length === 2) {
-            broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
-            setTimeout(() => {
-              const checkFlipped = playerBoard.filter(c => c.flipped && !c.matched);
-              if (checkFlipped.length !== 2) return;
+    broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
+    setTimeout(() => {
+        const checkFlipped = activeBoard.filter(c => c.flipped && !c.matched);
+        if (checkFlipped.length !== 2) return;
 
-              if (checkFlipped[0].value === checkFlipped[1].value) {
-                checkFlipped[0].matched = true;
-                checkFlipped[1].matched = true;
-                gsp.combo += 1;
-                gsp.score += (10 + gsp.combo * 5);
-                
-                if (Math.random() < 0.3 || gsp.combo >= 3) {
-                  const abilities = ["peek", "freeze", "shield", "shuffle"];
-                  const granted = abilities[Math.floor(Math.random() * abilities.length)];
-                  gsp.skills[granted] = (gsp.skills[granted] || 0) + 1;
-                  ws.send(JSON.stringify({ type: "SKILL_GAINED", skill: granted }));
-                }
+        if (checkFlipped[0].value === checkFlipped[1].value) {
+            checkFlipped[0].matched = true;
+            checkFlipped[1].matched = true;
+            // Incrementar el combo y puntaje basado en el combo
+            gsp.combo += 1;
+            gsp.score += (10 + gsp.combo * 5);
+            
+            // Si el random está por debajo de 0.3 o el combo llega a 3, incrementar más
+            if (Math.random() < 0.3 || gsp.combo >= 3) {
+                const abilities = ["peek", "freeze", "shield", "shuffle"];
+                const granted = abilities[Math.floor(Math.random() * abilities.length)];
+                gsp.skills[granted] = (gsp.skills[granted] || 0) + 1;
+                ws.send(JSON.stringify({ type: "SKILL_GAINED", skill: granted }));
+            }
 
-                ws.send(JSON.stringify({ type: "MATCH_FOUND", playerId: id, combo: gsp.combo }));
-              } else {
-                checkFlipped[0].flipped = false;
-                checkFlipped[1].flipped = false;
-                gsp.combo = 0;
-                ws.send(JSON.stringify({ type: "MISMATCH" }));
-              }
-              broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
-            }, 1000);
-          } else {
-            broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
-          }
-          break;
+            ws.send(JSON.stringify({ type: "MATCH_FOUND", playerId: id, combo: gsp.combo }));
+        } else {
+            checkFlipped[0].flipped = false;
+            checkFlipped[1].flipped = false;
+            gsp.combo = 0;
+
+            // Lógica de turno para equipos
+            if (mode === "TEAMS" && currentTeam) {
+                // Cambiar el turno al otro compañero de equipo
+                currentTeam.currentTurn = currentTeam.playerIds.find(p => p !== id) || id;
+            }
+
+            ws.send(JSON.stringify({ type: "MISMATCH" }));
+        }
+        broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
+    }, 1000);
+} else {
+    broadcast(currentRoomId, { type: "GAME_STATE", state: flipRoom.gameState });
+}
 
         case "USE_SKILL":
           if (!currentRoomId || !rooms[currentRoomId]) return;
