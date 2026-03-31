@@ -38,6 +38,8 @@ interface GameState {
   totalRounds: number;
   adminId: string | null;
   status: "WAITING" | "PLAYING" | "ROUND_END" | "TOURNAMENT_END";
+  theme: string;
+  skin: string;
 }
 
 interface Room {
@@ -60,17 +62,25 @@ function broadcast(roomId: string, data: any) {
   });
 }
 
-function generateBoard(round: number) {
+function generateBoard(round: number, theme: string = "default") {
   const cardCounts = [16, 24, 32];
   const count = cardCounts[round - 1] || 16;
   const pairCount = count / 2;
 
-  const allValues = [
+  let allValues = [
     "🟥", "🟡", "🔺", "🔷", "⭐", "🌙", "🌀", "💠", 
     "🍀", "💎", "🍎", "🍕", "🚀", "🛸", "👾", "👻", 
     "🎃", "⚡", "🌈", "🔥", "❄️", "🌋", "🪐", "🦄",
     "🐉", "🦁", "🦊", "🐼", "🐨", "🐯", "🐸", "🐙"
   ];
+  
+  if (theme === "tech") {
+    allValues = ["💻", "📱", "⌚", "🕹️", "⌨️", "🖱️", "🎮", "🔋", "🔌", "💾", "💿", "💡", "📡", "🔭", "🔬", "🚀", "🛸", "🛰️", "🤖", "⚙️", "🔧", "🧲", "🧬", "🧪", "🧫", "📺", "📻", "📷", "🎥"];
+  } else if (theme === "animals") {
+    allValues = ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜"];
+  } else if (theme === "abstract") {
+    allValues = ["🔺", "🔴", "🟦", "🟡", "🟩", "♦️", "🔷", "🔶", "🛑", "💠", "🔘", "🔳", "🔲", "〰️", "➰", "➖", "➕", "✖️", "➗", "🎵", "🎶", "♠️", "♣️", "♥️", "♦️", "⚪", "⚫", "🟤", "🟣", "🟠"];
+  }
   
   const values = allValues.slice(0, pairCount);
   const pairs = [...values, ...values];
@@ -102,7 +112,7 @@ function startRound(roomId: string, round: number) {
       gsp.timeSpent = 0;
       gsp.combo = 0;
       if (!gsp.eliminated) {
-        p.board = generateBoard(round);
+        p.board = generateBoard(round, room.gameState.theme);
         gsp.board = p.board;
       } else {
         p.board = [];
@@ -222,6 +232,8 @@ async function startServer() {
                 totalRounds: 3,
                 adminId: id,
                 status: "WAITING",
+                theme: "default",
+                skin: "default"
               },
               timerInterval: null
             };
@@ -279,6 +291,24 @@ async function startServer() {
           if (nextRoomObj.gameState.adminId !== id) return;
           if (nextRoomObj.gameState.status === "ROUND_END" && nextRoomObj.gameState.currentRound < nextRoomObj.gameState.totalRounds) {
             startRound(currentRoomId, nextRoomObj.gameState.currentRound + 1);
+          }
+          break;
+
+        case "CHANGE_THEME":
+          if (!currentRoomId || !rooms[currentRoomId]) return;
+          const themeRoom = rooms[currentRoomId];
+          if (themeRoom.gameState.adminId === id) {
+            themeRoom.gameState.theme = message.theme;
+            broadcast(currentRoomId, { type: "GAME_STATE", state: themeRoom.gameState });
+          }
+          break;
+
+        case "CHANGE_SKIN":
+          if (!currentRoomId || !rooms[currentRoomId]) return;
+          const skinRoom = rooms[currentRoomId];
+          if (skinRoom.gameState.adminId === id) {
+            skinRoom.gameState.skin = message.skin;
+            broadcast(currentRoomId, { type: "GAME_STATE", state: skinRoom.gameState });
           }
           break;
 
