@@ -25,9 +25,10 @@ export interface Card {
   value: string;
   flipped: boolean;
   matched: boolean;
+  isStatic?: boolean;
 }
 
-export type GameMode = "FFA" | "1V1" | "TEAMS";
+export type GameMode = "FFA" | "1V1" | "TEAMS" | "CLASH";
 
 export interface Team {
   id: string;
