@@ -443,7 +443,7 @@ export default function App() {
             unflipCardsTransaction(roomId, myId);
           }
           setIsWaitingForUnflip(false);
-        }, 350);
+        }, 1000);
       }
       // Status notifications
       if (ev.type === "SKILL_ACTIVATED") {
@@ -1041,14 +1041,14 @@ export default function App() {
                                
                                return (
                                  <div key={c.id} onClick={() => !c.isStatic && flipCard(c.id)} className={cn(
-                                    "aspect-square w-full rounded-xl transition-all duration-300 relative group preserve-3d shadow-xl", 
+                                    "aspect-square w-full rounded-xl transition-all duration-500 relative group preserve-3d shadow-xl will-change-transform", 
                                     reveal ? "rotate-y-180" : "bg-white/5 hover:bg-white/10 hover:scale-[1.03] active:scale-95",
                                     !c.isStatic && "cursor-pointer",
                                     c.isStatic && "bg-gradient-to-tr from-purple-900/40 to-pink-900/40 border-2 border-purple-500/30",
                                     isFrozen && "opacity-50 grayscale pointer-events-none"
                                  )}>
                                     <div className={cn(
-                                       "absolute inset-0 flex items-center justify-center text-3xl sm:text-4xl lg:text-5xl backface-hidden rounded-xl border border-white/10 overflow-hidden", 
+                                       "absolute inset-0 flex items-center justify-center text-3xl sm:text-4xl lg:text-5xl backface-hidden rounded-xl border border-white/10 overflow-hidden will-change-transform", 
                                        c.matched ? "bg-green-500 shadow-[0_0_20px_#22c55e] border-green-300" :
                                        reveal ? "bg-purple-600 shadow-[0_0_15px_rgba(147,51,234,0.4)] border-purple-400" : "bg-white/5",
                                        myPlayer?.skin === "retro" && "border-4 border-black border-double text-black",
@@ -1057,7 +1057,7 @@ export default function App() {
                                     )}>
                                        <div className={cn(
                                            reveal ? "scale-100 opacity-100" : "scale-0 opacity-0",
-                                           "transition-all duration-300 transform font-serif font-black"
+                                           "transition-all duration-500 ease-in-out transform font-serif font-black will-change-transform"
                                        )}>
                                           {c.value}
                                        </div>
@@ -1323,7 +1323,7 @@ export default function App() {
       </AnimatePresence>
 
       <style>{`
-        .rotate-y-180 { transform: rotateY(180deg); transition: transform 0.5s; }
+        .rotate-y-180 { transform: rotateY(180deg); transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .atmosphere { position: fixed; inset: 0; z-index: -1; background: radial-gradient(circle at 50% 50%, rgba(124,58,237,0.1), transparent); overflow: hidden; }
         .glass-card { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; }
         
