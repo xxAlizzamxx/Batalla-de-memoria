@@ -37,7 +37,7 @@ export const resetRoomTransaction = async (roomId: string) => {
 };
 
 export const generateBoard = (round: number, theme: string = "default"): Card[] => {
-  const cardCounts = [16, 36, 64];
+  const cardCounts = [16, 20, 24, 64];
   const count = cardCounts[round - 1] || 16;
   const pairCount = count / 2;
 
@@ -65,12 +65,26 @@ export const generateBoard = (round: number, theme: string = "default"): Card[] 
   const values = allValues.slice(0, pairCount);
   const pairs = [...values, ...values];
   const shuffled = pairs.sort(() => Math.random() - 0.5);
-  return shuffled.map((value, index) => ({
+  const cards: Card[] = shuffled.map((value, index) => ({
     id: index,
     value,
     flipped: false,
     matched: false,
   }));
+
+  if (count === 24) {
+    cards.splice(12, 0, {
+      id: 999,
+      value: "⚔️", 
+      flipped: true,
+      matched: true,
+      isStatic: true
+    });
+    // Re-assign IDs just in case they are used as array indices incorrectly elsewhere
+    cards.forEach((c, idx) => c.id = idx);
+  }
+
+  return cards;
 };
 
 export const startRoundTransaction = async (roomId: string, round: number) => {
@@ -87,30 +101,31 @@ export const startRoundTransaction = async (roomId: string, round: number) => {
     g.winner = null;
     g.time = round === 1 ? 50 : round === 2 ? 90 : 120;
     
-    if (g.mode === "TEAMS" && g.teams) {
-      Object.keys(g.teams).forEach(tId => {
-        g.teams![tId].score = 0;
-        g.teams![tId].board = generateBoard(round, g.theme);
-        g.teams![tId].currentTurn = g.teams![tId].playerIds[0];
-      });
-    }
+     if ((g.mode === "TEAMS" || g.mode === "CLASH") && g.teams) {
+       Object.keys(g.teams).forEach(tId => {
+         g.teams![tId].score = 0;
+         if (g.mode === "TEAMS") {
+            g.teams![tId].board = generateBoard(round, g.theme);
+            g.teams![tId].currentTurn = g.teams![tId].playerIds[0];
+         }
+       });
+     }
 
-    Object.keys(g.players).forEach(id => {
-      const gsp = g.players[id];
-      gsp.timeSpent = 0;
-      gsp.combo = 0;
-      gsp.score = 0;
+     Object.keys(g.players).forEach(id => {
+       const gsp = g.players[id];
+       gsp.timeSpent = 0;
+       gsp.combo = 0;
+       gsp.score = 0;
 
-      if (gsp.eliminated) {
-        gsp.board = [];
-      } else {
-        gsp.board = generateBoard(round, gsp.theme || g.theme || "default");
-        // Only grant peek on Round 1 if it's 0, or handle properly
-        if (round > 1) {
-          gsp.skills.peek = (gsp.skills.peek || 0) + 1;
-        }
-      }
-    });
+       if (gsp.eliminated) {
+         gsp.board = [];
+       } else {
+         gsp.board = generateBoard(round, gsp.theme || g.theme || "default");
+         if (round > 1) {
+           gsp.skills.peek = (gsp.skills.peek || 0) + 1;
+         }
+       }
+     });
 
     // Clear any previous events
     g.lastEvent = null;
@@ -143,6 +158,16 @@ export const checkRoundTimerTransaction = async (roomId: string) => {
       if (activeTeams.length > 0 && activeTeams.every(tm => tm.board.every(c => c.matched))) {
         allFinished = true;
       }
+    } else if (g.mode === "CLASH" && g.teams) {
+       Object.keys(g.players).forEach(id => {
+         if (!g.players[id].board.every(c => c.matched)) {
+            g.players[id].timeSpent += 1;
+         }
+       });
+       const activePlayers = Object.values(g.players);
+       if (activePlayers.length > 0 && activePlayers.every(p => p.board.every(c => c.matched))) {
+         allFinished = true;
+       }
     } else {
       Object.keys(g.players).forEach(id => {
         if (!g.players[id].eliminated && !g.players[id].board.every(c => c.matched)) {
@@ -158,14 +183,24 @@ export const checkRoundTimerTransaction = async (roomId: string) => {
     if (g.time <= 0 || allFinished) {
       g.status = "ROUND_END";
       
-      if (g.mode === "TEAMS" && g.teams) {
-        Object.values(g.teams).forEach(tm => { tm.totalScore += tm.score; });
+      if ((g.mode === "TEAMS" || g.mode === "CLASH") && g.teams) {
+        // Correct sum: For CLASH, add member points to team score
+        if (g.mode === "CLASH") {
+           Object.values(g.teams).forEach(tm => {
+              tm.score = tm.playerIds.reduce((sum, pId) => sum + (g.players[pId]?.score || 0), 0);
+              tm.totalScore += tm.score;
+           });
+           Object.values(g.players).forEach(p => { p.totalScore += p.score; });
+        } else {
+           Object.values(g.teams).forEach(tm => { tm.totalScore += tm.score; });
+        }
+
         if (g.currentRound >= g.totalRounds) {
           g.status = "TOURNAMENT_END";
           g.started = false;
           const sorted = Object.values(g.teams).sort((a, b) => b.totalScore - a.totalScore);
           g.winner = sorted[0] ? sorted[0].name : "Nadie";
-          g.lastEvent = { type: "GAME_OVER", winner: g.winner };
+          g.lastEvent = { id: Date.now().toString(), type: "GAME_OVER", winner: g.winner };
         }
       } else {
         Object.values(g.players).forEach(p => { p.totalScore += p.score; });
